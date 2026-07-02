@@ -1,7 +1,7 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/SiriusDevs/Rayfield/main/source.lua'))()
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V9.2 (Center TP)",
+   Name = "SCP-3008 Ultimate Hub V9.3",
    LoadingTitle = "Studio Production",
    LoadingSubtitle = "by Nastya",
    ConfigurationSaving = {
@@ -353,7 +353,7 @@ WorldTab:CreateButton({
    end
 })
 
--- УЛУЧШЕННЫЙ АВТОФАРМ ЕДЫ С ТЕЛЕПОРТОМ В ГЕОМЕТРИЧЕСКИЙ ЦЕНТР МОДЕЛИ
+-- АВТОФАРМ ЕДЫ (ЦЕНТРИРОВАННЫЙ)
 local FoodKeywords = {
    "pizza", "burger", "water", "hotdog", "cookie", "soda", 
    "apple", "lemon", "banana", "ice cream", "crisps", 
@@ -403,8 +403,7 @@ BaseTab:CreateButton({
             end
             
             if isFood then
-               -- Использование BoundingBox для получения точного центра модели
-               local modelCenterCFrame, _ = model:GetBoundingBox()
+               local modelCenterCFrame = model:GetBoundingBox()
                hrp.CFrame = modelCenterCFrame
                task.wait(0.04)
                
@@ -440,7 +439,7 @@ BaseTab:CreateButton({
    end
 })
 
--- УЛУЧШЕННЫЙ АВТОФАРМ АПТЕЧЕК С ТЕЛЕПОРТОМ В ГЕОМЕТРИЧЕСКИЙ ЦЕНТР МОДЕЛИ
+-- АВТОФАРМ АПТЕЧЕК (ЦЕНТРИРОВАННЫЙ)
 BaseTab:CreateButton({
    Name = "Auto Collect 16 Medkits (Auto Farm)",
    Callback = function()
@@ -474,8 +473,7 @@ BaseTab:CreateButton({
             processedModels[model] = true
             
             if string.find(string.lower(model.Name), "medkit") then
-               -- Использование BoundingBox для получения точного центра модели
-               local modelCenterCFrame, _ = model:GetBoundingBox()
+               local modelCenterCFrame = model:GetBoundingBox()
                hrp.CFrame = modelCenterCFrame
                task.wait(0.04)
                
@@ -531,4 +529,21 @@ BaseTab:CreateButton({
    Name = "Teleport To Base",
    Callback = function()
       local char = LocalPlayer.Character
-      if char and char:FindFirst
+      if char and char:FindFirstChild("HumanoidRootPart") then
+         if BaseLocation then
+            char.HumanoidRootPart.CFrame = CFrame.new(BaseLocation)
+            Rayfield:Notify({
+               Title = "Success",
+               Content = "Teleported to base successfully!",
+               Duration = 3
+            })
+         else
+            Rayfield:Notify({
+               Title = "Error",
+               Content = "No base checkpoint found! Set it first.",
+               Duration = 3
+            })
+         end
+      end
+   end
+})
