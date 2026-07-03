@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V15.0",
+   Name = "SCP-3008 Ultimate Hub V15.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (The Architect Update)",
+   LoadingSubtitle = "by Nastya (Safe & Optimized)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -18,11 +18,10 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- СОЗДАНИЕ ВСЕХ ВКЛАДОК
+-- СОЗДАНИЕ ОСТАВШИХСЯ ВКЛАДОК (ВКЛАДКА СТРОИТЕЛЬСТВА УБРАНА)
 local PlayerTab = Window:CreateTab("Player Mod", 4483362458)
 local WorldTab = Window:CreateTab("World & ESP", 4483362458)
 local BaseTab = Window:CreateTab("Base & Items", 4483362458)
-local BuildTab = Window:CreateTab("Auto Building", 4483362458)
 local ServerTab = Window:CreateTab("Server Manager", 4483362458)
 
 local RunService = game:GetService("RunService")
@@ -72,34 +71,45 @@ PlayerTab:CreateButton({
    end
 })
 
+-- ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ И НАДЕЖНЫЙ ТЕЛЕПОРТ
 PlayerTab:CreateButton({
    Name = "Advanced Teleport (Infinite Distance)",
    Callback = function()
-      if selectedPlayerName ~= "" and Players:FindFirstChild(selectedPlayerName) then
-         local targetPlayer = Players[selectedPlayerName]
-         local targetChar = targetPlayer.Character
+      if selectedPlayerName ~= "" then
+         local targetPlayer = Players:FindFirstChild(selectedPlayerName)
+         local localChar = LocalPlayer.Character
          
-         if targetChar and targetChar:FindFirstChild("HumanoidRootPart") then
-            local targetPos = targetChar.HumanoidRootPart.Position
+         if targetPlayer and localChar then
+            -- Пытаемся найти персонажа игрока в Players или напрямую в Workspace
+            local targetChar = targetPlayer.Character or workspace:FindFirstChild(selectedPlayerName)
             
-            Rayfield:Notify({Title = "Teleporting...", Content = "Forcing chunks to load at target location!", Duration = 2})
-            
-            pcall(function()
-               LocalPlayer:RequestStreamAroundAsync(targetPos)
-            end)
-            task.wait(0.1)
-            
-            LocalPlayer.Character.HumanoidRootPart.CFrame = targetChar.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
-         else
-            local targetModel = workspace:FindFirstChild(selectedPlayerName)
-            if targetModel and targetModel:FindFirstChild("HumanoidRootPart") then
-               LocalPlayer.Character.HumanoidRootPart.CFrame = targetModel.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
+            if targetChar then
+               -- Ищем HumanoidRootPart, либо любую другую базовую часть тела игрока
+               local targetPart = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildOfClass("Part")
+               
+               if targetPart then
+                  local targetPos = targetPart.Position
+                  Rayfield:Notify({Title = "Teleporting...", Content = "Requesting chunks and moving to target!", Duration = 2})
+                  
+                  -- Принудительно заставляем клиент подгрузить карту в месте нахождения игрока
+                  pcall(function()
+                     LocalPlayer:RequestStreamAroundAsync(targetPos)
+                  end)
+                  task.wait(0.15)
+                  
+                  -- Безопасное перемещение через PivotTo (работает стабильнее, чем прямое изменение CFrame у HRP)
+                  localChar:PivotTo(CFrame.new(targetPos + Vector3.new(0, 3, 0)))
+               else
+                  Rayfield:Notify({Title = "Error", Content = "Target parts are not fully loaded yet. Try again!", Duration = 3})
+               end
             else
-               Rayfield:Notify({Title = "Error", Content = "Target player is too far or dead! Try again in 3 seconds.", Duration = 4})
+               Rayfield:Notify({Title = "Error", Content = "Character model not found in game world!", Duration = 3})
             end
+         else
+            Rayfield:Notify({Title = "Error", Content = "Target player left or your character is dead!", Duration = 3})
          end
       else
-         Rayfield:Notify({Title = "Error", Content = "Player not selected or left the game!", Duration = 3})
+         Rayfield:Notify({Title = "Error", Content = "Please select a target player first!", Duration = 3})
       end
    end
 })
@@ -848,102 +858,7 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 4: AUTO BUILDING (ПОЛНЫЙ ФИКС СЕТИ И СЕТКИ)]
-----------------------------------------------------
-BuildTab:CreateSection("🏗️ Instant Server-Sided Architect")
-
-BuildTab:CreateButton({
-   Name = "Auto-Build Medium Pallet House (Visible To All)",
-   Callback = function()
-      local char = LocalPlayer.Character
-      local hrp = char and char:FindFirstChild("HumanoidRootPart")
-      if not hrp then return end
-      
-      Rayfield:Notify({Title = "Building started", Content = "Grabbing Network Ownership of nearby pallets...", Duration = 4})
-      
-      -- Ищем доступные поддоны в большом радиусе
-      local foundPallets = {}
-      for _, obj in pairs(workspace:GetDescendants()) do
-         if obj:IsA("Model") and string.find(string.lower(obj.Name), "pallet") then
-            if obj.PrimaryPart and (obj.PrimaryPart.Position - hrp.Position).Magnitude < 1500 then
-               table.insert(foundPallets, obj)
-            end
-         end
-      end
-      
-      if #foundPallets < 7 then
-         Rayfield:Notify({Title = "Build Failed", Content = "Not enough pallets found in render distance (Need 7, found " .. tostring(#foundPallets) .. ")", Duration = 5})
-         return
-      end
-      
-      -- Фиксация позиции и идеальный залоченный угол на 90 градусов (чтобы дом не косило как на фото)
-      local originalLocation = hrp.CFrame
-      local playerPos = hrp.Position
-      local lookVector = hrp.CFrame.LookVector
-      local angle = math.atan2(lookVector.X, lookVector.Z)
-      local gridAngle = math.round(math.deg(angle) / 90) * 90
-      local baseCFrame = CFrame.new(playerPos) * CFrame.Angles(0, math.rad(gridAngle), 0)
-      
-      -- Идеальный чертеж со скорректированными отступами без щелей
-      local blueprint = {
-         [1] = baseCFrame * CFrame.new(-10, 5, 0) * CFrame.Angles(0, 0, math.rad(90)), -- Левая стена
-         [2] = baseCFrame * CFrame.new(10, 5, 0) * CFrame.Angles(0, 0, math.rad(90)),  -- Правая стена
-         [3] = baseCFrame * CFrame.new(0, 5, 10) * CFrame.Angles(math.rad(90), 0, 0),  -- Задняя стена
-         
-         -- Лицевая стена (с зазором в центре под проход)
-         [4] = baseCFrame * CFrame.new(-5, 5, -10) * CFrame.Angles(math.rad(90), 0, 0), 
-         [5] = baseCFrame * CFrame.new(5, 5, -10) * CFrame.Angles(math.rad(90), 0, 0),
-         
-         -- Крыша (Ложится идеально горизонтально сверху стен)
-         [6] = baseCFrame * CFrame.new(-5, 10, 0) * CFrame.Angles(0, 0, 0),
-         [7] = baseCFrame * CFrame.new(5, 10, 0) * CFrame.Angles(0, 0, 0),
-      }
-      
-      local system = char:FindFirstChild("System")
-      local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
-      
-      -- Поочередно обрабатываем каждую деталь с принудительной репликацией на сервер
-      for index, targetCFrame in ipairs(blueprint) do
-         local pallet = foundPallets[index]
-         if pallet and pallet.PrimaryPart then
-            -- ХАК СЕТЕВОГО ВЛАДЕНИЯ: Телепортируемся к паллете в упор, чтобы стать ее владельцем в физике движка
-            hrp.CFrame = pallet.PrimaryPart.CFrame
-            task.wait(0.06) -- Даем движку Roblox долю секунды обновить статус
-            
-            -- Ставим паллету на место
-            pallet:SetPrimaryPartCFrame(targetCFrame)
-            
-            -- Сбрасываем импульсы скорости и дергаем триггеры игры
-            pcall(function()
-               for _, part in pairs(pallet:GetDescendants()) do
-                  if part:IsA("BasePart") then
-                     part.Velocity = Vector3.new(0,0,0)
-                     part.RotVelocity = Vector3.new(0,0,0)
-                  end
-                  -- Активируем встроенные датчики игры (если сервер проверяет взаимодействия)
-                  if part:IsA("ClickDetector") and fireclickdetector then fireclickdetector(part) end
-                  if part:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(part) end
-               end
-               
-               -- Прожимаем внутренний метод Grab/Release игры для стопроцентной видимости другими игроками
-               if actionRemote then
-                  actionRemote:InvokeServer("Grab", pallet)
-                  task.wait(0.01)
-                  actionRemote:InvokeServer("Release", pallet)
-               end
-            end)
-            task.wait(0.04)
-         end
-      end
-      
-      -- Возвращаем тебя обратно на точку строительства внутрь нового дома
-      hrp.CFrame = originalLocation + Vector3.new(0, 2, 0)
-      Rayfield:Notify({Title = "Success!", Content = "Perfect aligned House is now built and Visible to everyone!", Duration = 5})
-   end
-})
-
-----------------------------------------------------
--- [ВКЛАДКА 5: SERVER MANAGER]
+-- [ВКЛАДКА 4: SERVER MANAGER]
 ----------------------------------------------------
 local AgeLabel = ServerTab:CreateLabel("Current Server Age: Calculating...")
 
