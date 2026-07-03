@@ -8,13 +8,13 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V16.0",
+   Name = "SCP-3008 Ultimate Hub V16.5",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Absolute Timer Sync)",
+   LoadingSubtitle = "by Ropi (Absolute Sync + Blueprints)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV10",
-      FileName = "BossHubV16"
+      FileName = "BossHubV16_5"
    }
 })
 
@@ -853,6 +853,193 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
+-- [НОВОЕ: BASE BLUEPRINT SAVER & LOADER]
+----------------------------------------------------
+BaseTab:CreateSection("🏗️ Base Blueprint (Save & Load)")
+
+local BlueprintFolderName = "SCP3008_Blueprints"
+
+if isfolder and makefolder then
+   if not isfolder(BlueprintFolderName) then
+      makefolder(BlueprintFolderName)
+   end
+end
+
+local BlueprintSaveRadius = 50
+local CurrentBlueprintName = "MyAwesomeBase"
+local SelectedBlueprintFile = ""
+local LoadDelay = 0.05 
+
+BaseTab:CreateInput({
+   Name = "Blueprint Name (For Saving)",
+   PlaceholderText = "Type base name...",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      CurrentBlueprintName = Text
+   end,
+})
+
+BaseTab:CreateSlider({
+   Name = "Save Radius",
+   Range = {20, 200},
+   Increment = 10,
+   Suffix = "Studs",
+   CurrentValue = 50,
+   Flag = "BlueprintRadius",
+   Callback = function(Value)
+      BlueprintSaveRadius = Value
+   end
+})
+
+BaseTab:CreateButton({
+   Name = "💾 SAVE CURRENT BASE",
+   Callback = function()
+      if not writefile then
+         Rayfield:Notify({Title = "Error", Content = "Your executor does not support file saving!", Duration = 5})
+         return
+      end
+
+      local char = LocalPlayer.Character
+      local hrp = char and char:FindFirstChild("HumanoidRootPart")
+      if not hrp then return end
+
+      local rootCFrame = hrp.CFrame
+      local baseData = {}
+      local savedCount = 0
+
+      for _, model in pairs(workspace:GetDescendants()) do
+         if model:IsA("Model") and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
+            if model.PrimaryPart.Size.Magnitude < 100 then
+               local dist = (model.PrimaryPart.Position - rootCFrame.Position).Magnitude
+               
+               if dist <= BlueprintSaveRadius then
+                  local relativeCFrame = rootCFrame:ToObjectSpace(model.PrimaryPart.CFrame)
+                  local x, y, z = relativeCFrame.X, relativeCFrame.Y, relativeCFrame.Z
+                  local rx, ry, rz = relativeCFrame:ToEulerAnglesXYZ()
+                  
+                  table.insert(baseData, {
+                     Name = model.Name,
+                     Pos = {x, y, z},
+                     Rot = {rx, ry, rz}
+                  })
+                  savedCount = savedCount + 1
+               end
+            end
+         end
+      end
+
+      if savedCount > 0 then
+         local jsonData = HttpService:JSONEncode(baseData)
+         local fileName = BlueprintFolderName .. "/" .. CurrentBlueprintName .. ".json"
+         writefile(fileName, jsonData)
+         Rayfield:Notify({Title = "Saved Successfully!", Content = "Saved " .. savedCount .. " items to " .. CurrentBlueprintName, Duration = 4})
+      else
+         Rayfield:Notify({Title = "Failed", Content = "No items found in radius. Try increasing the Save Radius.", Duration = 4})
+      end
+   end
+})
+
+local function GetSavedBlueprints()
+   local files = {}
+   if listfiles and isfolder(BlueprintFolderName) then
+      for _, path in pairs(listfiles(BlueprintFolderName)) do
+         local fileName = string.match(path, "([^/%\\]+)$")
+         table.insert(files, fileName)
+      end
+   end
+   return files
+end
+
+local BlueprintDropdown = BaseTab:CreateDropdown({
+   Name = "Select Blueprint to Load",
+   Options = GetSavedBlueprints(),
+   CurrentOption = "",
+   MultipleOptions = false,
+   Flag = "BlueprintDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         SelectedBlueprintFile = Option[1]
+      else
+         SelectedBlueprintFile = Option
+      end
+   end,
+})
+
+BaseTab:CreateButton({
+   Name = "🔄 Refresh Blueprint List",
+   Callback = function()
+      BlueprintDropdown:Refresh(GetSavedBlueprints())
+   end
+})
+
+BaseTab:CreateButton({
+   Name = "🏗️ BUILD BASE (LOAD FILE)",
+   Callback = function()
+      if not readfile or SelectedBlueprintFile == "" then
+         Rayfield:Notify({Title = "Error", Content = "Please select a valid blueprint first!", Duration = 3})
+         return
+      end
+
+      local char = LocalPlayer.Character
+      local hrp = char and char:FindFirstChild("HumanoidRootPart")
+      if not hrp then return end
+
+      local fileName = BlueprintFolderName .. "/" .. SelectedBlueprintFile
+      if not isfile(fileName) then
+         Rayfield:Notify({Title = "Error", Content = "File not found!", Duration = 3})
+         return
+      end
+
+      local jsonData = readfile(fileName)
+      local baseData = HttpService:JSONDecode(jsonData)
+      local rootCFrame = hrp.CFrame
+      
+      local usedModels = {}
+      local loadedCount = 0
+
+      Rayfield:Notify({Title = "Building...", Content = "Searching map for needed items. This may take a moment.", Duration = 4})
+
+      task.spawn(function()
+         for _, itemData in pairs(baseData) do
+            local foundModel = nil
+            
+            for _, model in pairs(workspace:GetDescendants()) do
+               if model:IsA("Model") and model.Name == itemData.Name and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
+                  if not usedModels[model] then
+                     foundModel = model
+                     break
+                  end
+               end
+            end
+
+            if foundModel then
+               usedModels[foundModel] = true
+               
+               local pos = Vector3.new(unpack(itemData.Pos))
+               local rot = CFrame.Angles(unpack(itemData.Rot))
+               local targetCFrame = rootCFrame * CFrame.new(pos) * rot
+               
+               for _, part in pairs(foundModel:GetDescendants()) do
+                  if part:IsA("BasePart") then
+                     part.Anchored = false
+                     part.Velocity = Vector3.new(0,0,0)
+                     part.RotVelocity = Vector3.new(0,0,0)
+                  end
+               end
+               
+               foundModel:PivotTo(targetCFrame)
+               loadedCount = loadedCount + 1
+               
+               task.wait(LoadDelay)
+            end
+         end
+         
+         Rayfield:Notify({Title = "Build Complete!", Content = "Successfully placed " .. loadedCount .. "/" .. #baseData .. " items.", Duration = 5})
+      end)
+   end
+})
+
+----------------------------------------------------
 -- [ВКЛАДКА 4: SERVER MANAGER & TIME TRACKER]
 ----------------------------------------------------
 ServerTab:CreateSection("Time & Status")
@@ -865,7 +1052,6 @@ local cachedTimeLabel = nil
 local cachedPhaseLabel = nil
 local TimeTrackerConnection = nil
 
--- Строгие проверки формата (обрезаем пробелы и энтеры по краям)
 local function isValidTimeLabel(lbl)
    if not lbl or not lbl.Parent then return false end
    local txt = lbl.Text:gsub("\n", ""):gsub("^%s*(.-)%s*$", "%1")
@@ -884,7 +1070,6 @@ local function FindLabels()
    local gui = LocalPlayer:FindFirstChild("PlayerGui")
    if not gui then return end
    
-   -- 1. Сначала ищем уникальную плашку "DAY X" или "NIGHT X"
    for _, v in pairs(gui:GetDescendants()) do
       if v:IsA("TextLabel") and v.Name ~= "TimerLabel" and v.Visible then
          if isValidPhaseLabel(v) then
@@ -894,7 +1079,6 @@ local function FindLabels()
       end
    end
    
-   -- 2. Если нашли фазу, ищем таймер РЯДОМ с ней (чтобы точно взять правильный)
    if cachedPhaseLabel then
       if cachedPhaseLabel.Parent then
          for _, sibling in pairs(cachedPhaseLabel.Parent:GetChildren()) do
@@ -905,7 +1089,6 @@ local function FindLabels()
          end
       end
       
-      -- Если рядом не оказалось, ищем по всему экрану
       for _, v in pairs(gui:GetDescendants()) do
          if v:IsA("TextLabel") and v.Name ~= "TimerLabel" and v.Visible then
             if isValidTimeLabel(v) then
@@ -958,7 +1141,6 @@ ServerTab:CreateToggle({
          
          ScreenGui.Enabled = true
          
-         -- Обновление каждый кадр экрана для 100% визуальной синхронизации
          TimeTrackerConnection = RunService.RenderStepped:Connect(function()
             if not isValidTimeLabel(cachedTimeLabel) or not isValidPhaseLabel(cachedPhaseLabel) then
                FindLabels()
