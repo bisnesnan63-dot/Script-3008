@@ -8,13 +8,13 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V15.5",
+   Name = "SCP-3008 Ultimate Hub V16.0",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Perfect Timer Fix)",
+   LoadingSubtitle = "by Ropi (Absolute Timer Sync)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV9",
-      FileName = "BossHubV14"
+      FolderName = "SCP3008ProFixedV10",
+      FileName = "BossHubV16"
    }
 })
 
@@ -863,33 +863,64 @@ local TimerLabel = nil
 
 local cachedTimeLabel = nil
 local cachedPhaseLabel = nil
+local TimeTrackerConnection = nil
 
-local function getGameTimers()
-   if cachedTimeLabel and cachedTimeLabel.Parent and cachedPhaseLabel and cachedPhaseLabel.Parent then
-      return cachedTimeLabel, cachedPhaseLabel
-   end
-   
+-- Строгие проверки формата (обрезаем пробелы и энтеры по краям)
+local function isValidTimeLabel(lbl)
+   if not lbl or not lbl.Parent then return false end
+   local txt = lbl.Text:gsub("\n", ""):gsub("^%s*(.-)%s*$", "%1")
+   return string.match(txt, "^%d%d:%d%d$") ~= nil
+end
+
+local function isValidPhaseLabel(lbl)
+   if not lbl or not lbl.Parent then return false end
+   local txt = string.upper(lbl.Text):gsub("\n", " "):gsub("^%s*(.-)%s*$", "%1")
+   return (string.match(txt, "^DAY%s+%d+$") ~= nil) or (string.match(txt, "^NIGHT%s+%d+$") ~= nil)
+end
+
+local function FindLabels()
    cachedTimeLabel = nil
    cachedPhaseLabel = nil
+   local gui = LocalPlayer:FindFirstChild("PlayerGui")
+   if not gui then return end
    
-   for _, v in pairs(LocalPlayer:WaitForChild("PlayerGui"):GetDescendants()) do
-      if v:IsA("TextLabel") then
-         if string.match(v.Text, "^%d%d:%d%d$") then
-            cachedTimeLabel = v
-         elseif string.find(string.upper(v.Text), "DAY ") or string.find(string.upper(v.Text), "NIGHT ") then
+   -- 1. Сначала ищем уникальную плашку "DAY X" или "NIGHT X"
+   for _, v in pairs(gui:GetDescendants()) do
+      if v:IsA("TextLabel") and v.Name ~= "TimerLabel" and v.Visible then
+         if isValidPhaseLabel(v) then
             cachedPhaseLabel = v
+            break
          end
       end
    end
-   return cachedTimeLabel, cachedPhaseLabel
+   
+   -- 2. Если нашли фазу, ищем таймер РЯДОМ с ней (чтобы точно взять правильный)
+   if cachedPhaseLabel then
+      if cachedPhaseLabel.Parent then
+         for _, sibling in pairs(cachedPhaseLabel.Parent:GetChildren()) do
+            if sibling:IsA("TextLabel") and sibling ~= cachedPhaseLabel and isValidTimeLabel(sibling) then
+               cachedTimeLabel = sibling
+               return
+            end
+         end
+      end
+      
+      -- Если рядом не оказалось, ищем по всему экрану
+      for _, v in pairs(gui:GetDescendants()) do
+         if v:IsA("TextLabel") and v.Name ~= "TimerLabel" and v.Visible then
+            if isValidTimeLabel(v) then
+               cachedTimeLabel = v
+               return
+            end
+         end
+      end
+   end
 end
-
-local TimeTrackerTask = nil
 
 ServerTab:CreateToggle({
    Name = "Show Day/Night Overlay",
    CurrentValue = false,
-   Flag = "TimeOverlayToggleFix",
+   Flag = "TimeOverlayToggleFixAbsolute",
    Callback = function(Value)
       TimeOverlayEnabled = Value
       
@@ -902,7 +933,7 @@ ServerTab:CreateToggle({
             
             local Frame = Instance.new("Frame")
             Frame.Name = "TimeFrame"
-            Frame.Size = UDim2.new(0, 200, 0, 60)
+            Frame.Size = UDim2.new(0, 200, 0, 70)
             Frame.Position = UDim2.new(0.5, -100, 0.05, 0)
             Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
             Frame.BorderSizePixel = 0
@@ -921,45 +952,42 @@ ServerTab:CreateToggle({
             TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TimerLabel.TextScaled = true
             TimerLabel.Font = Enum.Font.GothamBold
-            TimerLabel.Text = "Syncing UI..."
+            TimerLabel.Text = "Syncing...\nWait"
             TimerLabel.Parent = Frame
          end
          
          ScreenGui.Enabled = true
          
-         -- Теперь мы просто зеркалим оригинальный таймер игры 5 раз в секунду. 
-         -- Без математики, без лагов, 100% точность!
-         TimeTrackerTask = task.spawn(function()
-            while TimeOverlayEnabled do
-               local tLabel, pLabel = getGameTimers()
+         -- Обновление каждый кадр экрана для 100% визуальной синхронизации
+         TimeTrackerConnection = RunService.RenderStepped:Connect(function()
+            if not isValidTimeLabel(cachedTimeLabel) or not isValidPhaseLabel(cachedPhaseLabel) then
+               FindLabels()
+            end
+            
+            if cachedTimeLabel and cachedPhaseLabel then
+               local timeStr = cachedTimeLabel.Text:gsub("\n", ""):gsub("^%s*(.-)%s*$", "%1")
+               local phaseStr = string.upper(cachedPhaseLabel.Text):gsub("\n", " "):gsub("^%s*(.-)%s*$", "%1")
                
-               if tLabel and pLabel then
-                  local timeStr = tLabel.Text
-                  local phaseStr = string.upper(pLabel.Text)
-                  
-                  if string.find(phaseStr, "DAY") then
-                     if TimerLabel then
-                        TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
-                        TimerLabel.Text = "To NIGHT: " .. timeStr
-                     end
-                  else
-                     if TimerLabel then
-                        TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                        TimerLabel.Text = "To DAY: " .. timeStr
-                     end
+               if string.match(phaseStr, "^DAY") then
+                  if TimerLabel then
+                     TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+                     TimerLabel.Text = "To NIGHT:\n" .. timeStr
                   end
-               else
-                  if TimerLabel then TimerLabel.Text = "Searching HUD..." end
+               elseif string.match(phaseStr, "^NIGHT") then
+                  if TimerLabel then
+                     TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+                     TimerLabel.Text = "To DAY:\n" .. timeStr
+                  end
                end
-               
-               task.wait(0.2)
+            else
+               if TimerLabel then TimerLabel.Text = "Searching HUD..." end
             end
          end)
       else
          if ScreenGui then ScreenGui.Enabled = false end
-         if TimeTrackerTask then
-            task.cancel(TimeTrackerTask)
-            TimeTrackerTask = nil
+         if TimeTrackerConnection then
+            TimeTrackerConnection:Disconnect()
+            TimeTrackerConnection = nil
          end
       end
    end
