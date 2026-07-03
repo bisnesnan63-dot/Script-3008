@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V14.0",
+   Name = "SCP-3008 Ultimate Hub V14.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Multi-Select Food Menu)",
+   LoadingSubtitle = "by Nastya (Optimized & Fixed)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -32,7 +32,7 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 
--- СОХРАНЕНИЕ ОРИГИНАЛЬНЫХ НАСТРОЕК СВЕТА ДЛЯ КОРРЕКТНОГО ВЫКЛЮЧЕНИЯ FULLBRIGHT
+-- СОХРАНЕНИЕ ОРИГИНАЛЬНЫХ НАСТРОЕК СВЕТА
 local Lighting = game:GetService("Lighting")
 local OrigAmbient = Lighting.Ambient
 local OrigOutdoorAmbient = Lighting.OutdoorAmbient
@@ -266,8 +266,13 @@ WorldTab:CreateToggle({
       if ESP_Enabled then
          task.spawn(function()
             while ESP_Enabled do
-               for _, obj in pairs(workspace:GetDescendants()) do
+               local descendants = workspace:GetDescendants()
+               for i, obj in pairs(descendants) do
                   if not ESP_Enabled then break end
+                  
+                  -- ОПТИМИЗАЦИЯ: Предотвращаем зависание игры на огромных картах
+                  if i % 200 == 0 then task.wait() end
+                  
                   if obj:IsA("Model") and obj.PrimaryPart then
                      local name = string.lower(obj.Name)
                      if string.find(name, "employee") or string.find(name, "staff") then
@@ -383,9 +388,12 @@ WorldTab:CreateToggle({
                      tracer.ZIndex = 6
                      tracer.Parent = player.Character
                   end
-                  tracer.Adornee = targetHrp
-                  tracer.Length = (targetHrp.Position - myHrp.Position).Magnitude
-                  tracer.CFrame = CFrame.lookAt(Vector3.new(0, 0, 0), targetHrp.Position - myHrp.Position)
+                  
+                  -- ФИКС ТРЕЙСЕРОВ: Правильный расчет направления в локальном пространстве координат
+                  tracer.Adornee = myHrp
+                  local relativePos = myHrp.CFrame:PointToObjectSpace(targetHrp.Position)
+                  tracer.CFrame = CFrame.lookAt(Vector3.new(0, 0, 0), relativePos)
+                  tracer.Length = relativePos.Magnitude
 
                   local gui = player.Character:FindFirstChild("PlayerTextESP")
                   if not gui then
@@ -424,7 +432,6 @@ WorldTab:CreateToggle({
    end
 })
 
--- ИСПРАВЛЕННЫЙ ПОЛНОЦЕННЫЙ FULLBRIGHT (ОТКЛЮЧАЕТСЯ КОРРЕКТНО)
 local FullbrightEnabled = false
 local FullbrightConnection = nil
 
@@ -434,7 +441,6 @@ WorldTab:CreateToggle({
    Flag = "FullbrightDynamicToggle",
    Callback = function(Value)
       FullbrightEnabled = Value
-      
       if FullbrightEnabled then
          FullbrightConnection = RunService.Heartbeat:Connect(function()
             Lighting.Ambient = Color3.fromRGB(255, 255, 255)
@@ -460,21 +466,18 @@ WorldTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ МЕНЮ-СПИСОК ЕДЫ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (УМНЫЙ АВТОФАРМ)]
 ----------------------------------------------------
-
 local AutoFoodEnabled = false
 local FoodRadius = 1000
 local FoodLimit = 16
 
--- Полная таблица доступной еды для выбора в меню
 local AllFoodList = {
    "Burger", "Water", "Hotdog", "Cookie", "Soda", "Apple", "Lemon", 
    "Banana", "Ice Cream", "Crisps", "Chips", "Cola", "Bloxy", "Bob", 
    "Donut", "Frikadeller", "Meatball"
 }
 
--- Текущие выбранные элементы (по умолчанию включены ВСЕ)
 local SelectedFoodItems = {
    "Burger", "Water", "Hotdog", "Cookie", "Soda", "Apple", "Lemon", 
    "Banana", "Ice Cream", "Crisps", "Chips", "Cola", "Bloxy", "Bob", 
@@ -483,15 +486,14 @@ local SelectedFoodItems = {
 
 BaseTab:CreateSection("⚡ Interactive Food Auto-Farm (Menu Selector)")
 
--- УДОБНОЕ МЕНЮ ВЫБОРА ЕДЫ С ГАЛОЧКАМИ
 BaseTab:CreateDropdown({
    Name = "Select Food to Collect",
    Options = AllFoodList,
    CurrentOption = SelectedFoodItems,
-   MultipleOptions = true, -- ВКЛЮЧАЕМ МНОЖЕСТВЕННЫЙ ВЫБОР
+   MultipleOptions = true,
    Flag = "FoodMenuSelectorDropdown",
    Callback = function(Options)
-      SelectedFoodItems = Options -- Моментально обновляем список того, что нужно собирать
+      SelectedFoodItems = Options
    end,
 })
 
@@ -531,9 +533,9 @@ BaseTab:CreateToggle({
                local char = LocalPlayer.Character
                local hrp = char and char:FindFirstChild("HumanoidRootPart")
                local system = char and char:FindFirstChild("System")
-               local actionRemote = system and system:FindFirstChild("Action")
+               local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
                
-               if hrp then
+               if hrp and actionRemote then
                   local originalLocation = hrp.CFrame
                   local foodCollected = 0
                   local parts = workspace:GetPartBoundsInRadius(hrp.Position, FoodRadius)
@@ -546,10 +548,13 @@ BaseTab:CreateToggle({
                         processedModels[model] = true
                         local lowerName = string.lower(model.Name)
                         
-                        -- Проверяем, есть ли этот предмет в выбранных в нашем меню
+                        -- ФИКС ПРОВЕРКИ БЕЛОГО СПИСКА (Поддержка массивов и словарей Rayfield)
                         local isWhitelisted = false
-                        for i = 1, #SelectedFoodItems do
-                           if string.find(lowerName, string.lower(SelectedFoodItems[i])) then
+                        for k, v in pairs(SelectedFoodItems) do
+                           local itemName = (type(k) == "string") and k or tostring(v)
+                           if type(v) == "boolean" and v == false then continue end
+                           
+                           if string.find(lowerName, string.lower(itemName)) then
                               isWhitelisted = true
                               break
                            end
@@ -558,25 +563,23 @@ BaseTab:CreateToggle({
                         if isWhitelisted then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.01)
+                           task.wait(0.02)
                            
-                           if actionRemote then
-                              pcall(function()
-                                 if actionRemote:IsA("RemoteFunction") then
-                                    actionRemote:InvokeServer("Store", {["Model"] = model})
-                                 else
-                                    actionRemote:FireServer("Store", {["Model"] = model})
-                                 end
-                                 pcall(function() actionRemote:FireServer("Store", model) end)
-                              end)
-                           end
+                           -- Безопасный вызов без спама пакетами
+                           pcall(function()
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Store", {["Model"] = model})
+                              else
+                                 actionRemote:FireServer("Store", {["Model"] = model})
+                              end
+                           end)
                            
                            for _, child in pairs(model:GetDescendants()) do
                               if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            foodCollected = foodCollected + 1
-                           task.wait(0.01)
+                           task.wait(0.02)
                         end
                      end
                   end
@@ -591,7 +594,6 @@ BaseTab:CreateToggle({
    end
 })
 
--- НАСТРОЙКИ ДЛЯ АПТЕЧЕК (ОСТАЛИСЬ КЛАССИЧЕСКИМИ БЕЗ ИЗМЕНЕНИЙ)
 local AutoMedkitsEnabled = false
 local MedkitRadius = 1000
 local MedkitLimit = 16
@@ -634,9 +636,9 @@ BaseTab:CreateToggle({
                local char = LocalPlayer.Character
                local hrp = char and char:FindFirstChild("HumanoidRootPart")
                local system = char and char:FindFirstChild("System")
-               local actionRemote = system and system:FindFirstChild("Action")
+               local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
                
-               if hrp then
+               if hrp and actionRemote then
                   local originalLocation = hrp.CFrame
                   local medkitsCollected = 0
                   local parts = workspace:GetPartBoundsInRadius(hrp.Position, MedkitRadius)
@@ -651,25 +653,22 @@ BaseTab:CreateToggle({
                         if string.find(string.lower(model.Name), "medkit") then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.01)
+                           task.wait(0.02)
                            
-                           if actionRemote then
-                              pcall(function()
-                                 if actionRemote:IsA("RemoteFunction") then
-                                    actionRemote:InvokeServer("Store", {["Model"] = model})
-                                 else
-                                    actionRemote:FireServer("Store", {["Model"] = model})
-                                 end
-                                 pcall(function() actionRemote:FireServer("Store", model) end)
-                              end)
-                           end
+                           pcall(function()
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Store", {["Model"] = model})
+                              else
+                                 actionRemote:FireServer("Store", {["Model"] = model})
+                              end
+                           end)
                            
                            for _, child in pairs(model:GetDescendants()) do
                               if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            medkitsCollected = medkitsCollected + 1
-                           task.wait(0.01)
+                           task.wait(0.02)
                         end
                      end
                   end
