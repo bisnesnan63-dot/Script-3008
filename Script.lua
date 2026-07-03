@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V12.0 (Turbo Farm)",
+   Name = "SCP-3008 Ultimate Hub V12.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Excluding Pizza)",
+   LoadingSubtitle = "by Nastya (Fullbright Toggle)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -416,14 +416,37 @@ WorldTab:CreateToggle({
    end
 })
 
-WorldTab:CreateButton({
-   Name = "Remove Fog & Dark",
-   Callback = function()
-      local lighting = game:GetService("Lighting")
-      lighting.FogEnd = 9e9
-      lighting.GlobalShadows = false
-      lighting.Ambient = Color3.fromRGB(255, 255, 255)
-      lighting.Brightness = 2
+-- ДИНАМИЧЕСКИЙ ПОЛЗУНОК-ПЕРЕКЛЮЧАТЕЛЬ FULLBRIGHT (БЛОКИРУЕТ ТЕМНОТУ И ТУМАН)
+local FullbrightEnabled = false
+local FullbrightConnection = nil
+
+WorldTab:CreateToggle({
+   Name = "Fullbright (No Fog / No Dark)",
+   CurrentValue = false,
+   Flag = "FullbrightDynamicToggle",
+   Callback = function(Value)
+      FullbrightEnabled = Value
+      local Lighting = game:GetService("Lighting")
+      
+      if FullbrightEnabled then
+         -- Постоянно форсим свет, игнорируя ночные скрипты игры
+         FullbrightConnection = RunService.Heartbeat:Connect(function()
+            Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+            Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+            Lighting.Brightness = 3
+            Lighting.FogEnd = 9e9
+            Lighting.GlobalShadows = false
+         end)
+         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Enabled! Fog and Night disabled.", Duration = 3})
+      else
+         -- Отключаем форс, возвращая стандартный цикл игры
+         if FullbrightConnection then
+            FullbrightConnection:Disconnect()
+            FullbrightConnection = nil
+         end
+         Lighting.GlobalShadows = true
+         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Disabled. Normal game cycle resumed.", Duration = 3})
+      end
    end
 })
 
@@ -459,7 +482,6 @@ BaseTab:CreateButton({
          Duration = 2
       })
       
-      -- Расширенный радиус до 1000 стадов
       local parts = workspace:GetPartBoundsInRadius(hrp.Position, 1000)
       local processedModels = {}
       
@@ -535,7 +557,6 @@ BaseTab:CreateButton({
          Duration = 2
       })
       
-      -- Расширенный радиус до 1000 стадов
       local parts = workspace:GetPartBoundsInRadius(hrp.Position, 1000)
       local processedModels = {}
       
