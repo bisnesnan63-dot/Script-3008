@@ -8,13 +8,13 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V15.4",
+   Name = "SCP-3008 Ultimate Hub V15.5",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Smooth Timer Fix)",
+   LoadingSubtitle = "by Ropi (Perfect Timer Fix)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV8",
-      FileName = "BossHubV13"
+      FolderName = "SCP3008ProFixedV9",
+      FileName = "BossHubV14"
    }
 })
 
@@ -860,26 +860,36 @@ ServerTab:CreateSection("Time & Status")
 local TimeOverlayEnabled = false
 local ScreenGui = nil
 local TimerLabel = nil
-local cachedTimeLabel = nil
-local timeRenderConnection = nil
 
-local function getRealGameTime()
-   if cachedTimeLabel and cachedTimeLabel.Parent then
-      return cachedTimeLabel.Text
+local cachedTimeLabel = nil
+local cachedPhaseLabel = nil
+
+local function getGameTimers()
+   if cachedTimeLabel and cachedTimeLabel.Parent and cachedPhaseLabel and cachedPhaseLabel.Parent then
+      return cachedTimeLabel, cachedPhaseLabel
    end
+   
+   cachedTimeLabel = nil
+   cachedPhaseLabel = nil
+   
    for _, v in pairs(LocalPlayer:WaitForChild("PlayerGui"):GetDescendants()) do
-      if v:IsA("TextLabel") and string.match(v.Text, "^%d%d:%d%d$") then
-         cachedTimeLabel = v
-         return v.Text
+      if v:IsA("TextLabel") then
+         if string.match(v.Text, "^%d%d:%d%d$") then
+            cachedTimeLabel = v
+         elseif string.find(string.upper(v.Text), "DAY ") or string.find(string.upper(v.Text), "NIGHT ") then
+            cachedPhaseLabel = v
+         end
       end
    end
-   return nil
+   return cachedTimeLabel, cachedPhaseLabel
 end
+
+local TimeTrackerTask = nil
 
 ServerTab:CreateToggle({
    Name = "Show Day/Night Overlay",
    CurrentValue = false,
-   Flag = "TimeOverlayToggle",
+   Flag = "TimeOverlayToggleFix",
    Callback = function(Value)
       TimeOverlayEnabled = Value
       
@@ -911,73 +921,45 @@ ServerTab:CreateToggle({
             TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TimerLabel.TextScaled = true
             TimerLabel.Font = Enum.Font.GothamBold
-            TimerLabel.Text = "Searching UI..."
+            TimerLabel.Text = "Syncing UI..."
             TimerLabel.Parent = Frame
          end
          
          ScreenGui.Enabled = true
          
-         local lastTimeStr = ""
-         local currentPhase = ""
-         local exactRealSecondsLeft = 0
-         local lastSyncClock = os.clock()
-
-         if timeRenderConnection then timeRenderConnection:Disconnect() end
-         timeRenderConnection = RunService.RenderStepped:Connect(function()
-            if not TimeOverlayEnabled or not ScreenGui.Enabled then return end
-            
-            local timeStr = getRealGameTime()
-            if timeStr then
-               -- Если время в игре изменилось, пересчитываем базу
-               if timeStr ~= lastTimeStr then
-                  local hour, minute = string.match(timeStr, "(%d%d):(%d%d)")
-                  if hour and minute then
-                     hour = tonumber(hour)
-                     minute = tonumber(minute)
-                     local totalMinutes = hour * 60 + minute
-                     
-                     if totalMinutes >= 360 and totalMinutes < 1080 then
-                        -- ДЕНЬ: Длится ровно 6 минут (360 секунд на 720 игровых минут)
-                        currentPhase = "To NIGHT: "
-                        local inGameMinutesLeft = 1080 - totalMinutes
-                        exactRealSecondsLeft = inGameMinutesLeft * (360 / 720) -- Коэффициент 0.5
-                        if TimerLabel then TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255) end
-                     else
-                        -- НОЧЬ: Длится ровно 5 минут (300 секунд на 720 игровых минут)
-                        currentPhase = "To DAY: "
-                        local inGameMinutesLeft = 0
-                        if totalMinutes >= 1080 then
-                           inGameMinutesLeft = (1440 - totalMinutes) + 360
-                        else
-                           inGameMinutesLeft = 360 - totalMinutes
-                        end
-                        exactRealSecondsLeft = inGameMinutesLeft * (300 / 720) -- Коэффициент ~0.416
-                        if TimerLabel then TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0) end
+         -- Теперь мы просто зеркалим оригинальный таймер игры 5 раз в секунду. 
+         -- Без математики, без лагов, 100% точность!
+         TimeTrackerTask = task.spawn(function()
+            while TimeOverlayEnabled do
+               local tLabel, pLabel = getGameTimers()
+               
+               if tLabel and pLabel then
+                  local timeStr = tLabel.Text
+                  local phaseStr = string.upper(pLabel.Text)
+                  
+                  if string.find(phaseStr, "DAY") then
+                     if TimerLabel then
+                        TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+                        TimerLabel.Text = "To NIGHT: " .. timeStr
                      end
-                     
-                     lastTimeStr = timeStr
-                     lastSyncClock = os.clock() -- Сохраняем время синхронизации
+                  else
+                     if TimerLabel then
+                        TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+                        TimerLabel.Text = "To DAY: " .. timeStr
+                     end
                   end
+               else
+                  if TimerLabel then TimerLabel.Text = "Searching HUD..." end
                end
                
-               -- ПЛАВНЫЙ ПОКАДРОВЫЙ ОТСЧЕТ НАЗАД (ИНТЕРПОЛЯЦИЯ)
-               local elapsed = os.clock() - lastSyncClock
-               local predictedTime = math.max(0, exactRealSecondsLeft - elapsed)
-               
-               local mins = math.floor(predictedTime / 60)
-               local secs = math.floor(predictedTime % 60)
-               if TimerLabel then
-                  TimerLabel.Text = string.format("%s%02d:%02d", currentPhase, mins, secs)
-               end
-            else
-               if TimerLabel then TimerLabel.Text = "Searching HUD..." end
+               task.wait(0.2)
             end
          end)
       else
          if ScreenGui then ScreenGui.Enabled = false end
-         if timeRenderConnection then
-            timeRenderConnection:Disconnect()
-            timeRenderConnection = nil
+         if TimeTrackerTask then
+            task.cancel(TimeTrackerTask)
+            TimeTrackerTask = nil
          end
       end
    end
