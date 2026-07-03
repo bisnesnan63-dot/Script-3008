@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V12.2",
+   Name = "SCP-3008 Ultimate Hub V13.0",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Sliders & Fullbright Fix)",
+   LoadingSubtitle = "by Nastya (Smart Food Whitelist)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -32,7 +32,7 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
 
--- СОХРАНЕНИЕ ОРИГИНАЛЬНЫХ НАСТРОЕК СВЕТА ДЛЯ КОРРЕКТНОГО ВЫКЛЮЧЕНИЯ
+-- СОХРАНЕНИЕ ОРИГИНАЛЬНЫХ НАСТРОЕК СВЕТА ДЛЯ КОРРЕКТНОГО ВЫКЛЮЧЕНИЯ FULLBRIGHT
 local Lighting = game:GetService("Lighting")
 local OrigAmbient = Lighting.Ambient
 local OrigOutdoorAmbient = Lighting.OutdoorAmbient
@@ -455,26 +455,33 @@ WorldTab:CreateToggle({
          Lighting.Brightness = OrigBrightness
          Lighting.FogEnd = OrigFogEnd
          Lighting.GlobalShadows = OrigShadows
-         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Disabled! Normal game environment restored.", Duration = 3})
+         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Disabled! Normal environment restored.", Duration = 3})
       end
    end
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (ПОЛЗУНКИ И АВТОФАРМЫ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (ОБНОВЛЕННЫЙ УМНЫЙ ФАРМ)]
 ----------------------------------------------------
-local FoodKeywords = {
-   "burger", "water", "hotdog", "cookie", "soda", 
-   "apple", "lemon", "banana", "ice cream", "crisps", 
-   "chips", "cola", "bloxy", "bob", "donut", "frikadeller", "meatball"
-}
 
--- Настройки ползунков для Еды
+-- Переменные для Умного автофарма ЕДЫ с БЕЛЫМ СПИСКОМ
 local AutoFoodEnabled = false
 local FoodRadius = 1000
 local FoodLimit = 16
+-- Строка со всеми предметами по умолчанию (без пиццы)
+local FoodWhitelistRaw = "burger, water, hotdog, cookie, soda, apple, lemon, banana, ice cream, crisps, chips, cola, bloxy, bob, donut, frikadeller, meatball"
 
-BaseTab:CreateSection("⚡ Auto-Farm Food Configuration (No Pizza)")
+BaseTab:CreateSection("⚡ Advanced Smart Food Auto-Farm (With Whitelist)")
+
+BaseTab:CreateInput({
+   Name = "Food Whitelist (Keywords)",
+   PlaceholderText = "burger, donut, cola...",
+   CurrentValue = "burger, water, hotdog, cookie, soda, apple, lemon, banana, ice cream, crisps, chips, cola, bloxy, bob, donut, frikadeller, meatball",
+   RemoveTextAfterFocusLost = false,
+   Callback = function(Text)
+      FoodWhitelistRaw = Text
+   end,
+})
 
 BaseTab:CreateSlider({
    Name = "Food Scan Radius",
@@ -515,6 +522,12 @@ BaseTab:CreateToggle({
                local actionRemote = system and system:FindFirstChild("Action")
                
                if hrp then
+                  -- ДИНАМИЧЕСКИЙ РАЗБОР БЕЛОГО СПИСКА ИЗ СТРОКИ В ТАБЛИЦУ НА КАЖДОМ ЦИКЛЕ
+                  local keywords = {}
+                  for word in string.gmatch(string.lower(FoodWhitelistRaw), "([^,%s]+)") do
+                     table.insert(keywords, word)
+                  end
+
                   local originalLocation = hrp.CFrame
                   local foodCollected = 0
                   local parts = workspace:GetPartBoundsInRadius(hrp.Position, FoodRadius)
@@ -526,19 +539,21 @@ BaseTab:CreateToggle({
                      if model and not processedModels[model] then
                         processedModels[model] = true
                         local lowerName = string.lower(model.Name)
-                        local isFood = false
                         
-                        for i = 1, #FoodKeywords do
-                           if string.find(lowerName, FoodKeywords[i]) then
-                              isFood = true
+                        -- Проверка предмета по твоему белому списку keywords
+                        local isWhitelisted = false
+                        for i = 1, #keywords do
+                           if string.find(lowerName, keywords[i]) then
+                              isWhitelisted = true
                               break
                            end
                         end
                         
-                        if isFood and not string.find(lowerName, "pizza") then
+                        -- Собираем только если прошел проверку белого списка
+                        if isWhitelisted then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.01) -- Турбо
+                           task.wait(0.01)
                            
                            if actionRemote then
                               pcall(function()
@@ -564,19 +579,19 @@ BaseTab:CreateToggle({
                      hrp.CFrame = originalLocation
                   end
                end
-               task.wait(3) -- Пауза между проверками, чтобы не крашить сервер
+               task.wait(3) -- Безопасный интервал проверок
             end
          end)
       end
    end
 })
 
--- Настройки ползунков для Аптечек
+-- НАСТРОЙКИ ДЛЯ АПТЕЧЕК (ОСТАЛИСЬ КЛАССИЧЕСКИМИ, БЕЗ ИЗМЕНЕНИЙ)
 local AutoMedkitsEnabled = false
 local MedkitRadius = 1000
 local MedkitLimit = 16
 
-BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration")
+BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration (Classic)")
 
 BaseTab:CreateSlider({
    Name = "Medkit Scan Radius",
@@ -628,10 +643,11 @@ BaseTab:CreateToggle({
                      if model and not processedModels[model] then
                         processedModels[model] = true
                         
+                        -- Классический поиск по слову medkit
                         if string.find(string.lower(model.Name), "medkit") then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.01) -- Турбо
+                           task.wait(0.01)
                            
                            if actionRemote then
                               pcall(function()
@@ -657,7 +673,7 @@ BaseTab:CreateToggle({
                      hrp.CFrame = originalLocation
                   end
                end
-               task.wait(3) -- Пауза между проверками
+               task.wait(3)
             end
          end)
       end
@@ -676,11 +692,7 @@ BaseTab:CreateButton({
          return 
       end
       
-      Rayfield:Notify({
-         Title = "Scanning Server",
-         Content = "Searching for real Beans (Food) or Bob...",
-         Duration = 3
-      })
+      Rayfield:Notify({Title = "Scanning Server", Content = "Searching for real Beans (Food) or Bob...", Duration = 3})
       
       local targetModel = nil
       for _, obj in pairs(workspace:GetDescendants()) do
@@ -696,17 +708,9 @@ BaseTab:CreateButton({
       if targetModel then
          local modelCenterCFrame, _ = targetModel:GetBoundingBox()
          hrp.CFrame = modelCenterCFrame + Vector3.new(0, 4, 0)
-         Rayfield:Notify({
-            Title = "Success!",
-            Content = "Teleported directly to Cafeteria near item: " .. targetModel.Name,
-            Duration = 4
-         })
+         Rayfield:Notify({Title = "Success!", Content = "Teleported to Cafeteria near item: " .. targetModel.Name, Duration = 4})
       else
-         Rayfield:Notify({
-            Title = "Not Found",
-            Content = "Beans/Bob are not loaded in your render distance. Walk around!",
-            Duration = 5
-         })
+         Rayfield:Notify({Title = "Not Found", Content = "Beans/Bob are not loaded in your render distance.", Duration = 5})
       end
    end
 })
@@ -772,17 +776,9 @@ BaseTab:CreateButton({
          end
          if WaypointDropdown then WaypointDropdown:Refresh(list) end
          
-         Rayfield:Notify({
-            Title = "Location Saved",
-            Content = "Added '" .. TargetWaypointName .. "' to your list!",
-            Duration = 3
-         })
+         Rayfield:Notify({Title = "Location Saved", Content = "Added '" .. TargetWaypointName .. "' to your list!", Duration = 3})
       else
-         Rayfield:Notify({
-            Title = "Error",
-            Content = "Please type a name in the input box first!",
-            Duration = 3
-         })
+         Rayfield:Notify({Title = "Error", Content = "Please type a name in the input box first!", Duration = 3})
       end
    end
 })
@@ -811,17 +807,9 @@ BaseTab:CreateButton({
       
       if SelectedWaypoint and Waypoints[SelectedWaypoint] then
          hrp.CFrame = CFrame.new(Waypoints[SelectedWaypoint])
-         Rayfield:Notify({
-            Title = "Teleported",
-            Content = "Arrived safely at: " .. SelectedWaypoint,
-            Duration = 3
-         })
+         Rayfield:Notify({Title = "Teleported", Content = "Arrived safely at: " .. SelectedWaypoint, Duration = 3})
       else
-         Rayfield:Notify({
-            Title = "Teleport Failed",
-            Content = "Please select a valid point from the drop-down list!",
-            Duration = 3
-         })
+         Rayfield:Notify({Title = "Teleport Failed", Content = "Please select a valid point from the drop-down list!", Duration = 3})
       end
    end
 })
@@ -839,11 +827,7 @@ BaseTab:CreateButton({
          end
          if WaypointDropdown then WaypointDropdown:Refresh(list) end
          
-         Rayfield:Notify({
-            Title = "Deleted",
-            Content = "Waypoint removed from your memory.",
-            Duration = 3
-         })
+         Rayfield:Notify({Title = "Deleted", Content = "Waypoint removed from your memory.", Duration = 3})
       end
    end
 })
