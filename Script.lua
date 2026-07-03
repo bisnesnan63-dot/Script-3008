@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V13.0",
+   Name = "SCP-3008 Ultimate Hub V14.0",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Smart Food Whitelist)",
+   LoadingSubtitle = "by Nastya (Multi-Select Food Menu)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -424,7 +424,7 @@ WorldTab:CreateToggle({
    end
 })
 
--- ИСПРАВЛЕННЫЙ ПОЛНОЦЕННЫЙ FULLBRIGHT (ТЕПЕРЬ ВЫКЛЮЧАЕТСЯ НА 100%)
+-- ИСПРАВЛЕННЫЙ ПОЛНОЦЕННЫЙ FULLBRIGHT (ОТКЛЮЧАЕТСЯ КОРРЕКТНО)
 local FullbrightEnabled = false
 local FullbrightConnection = nil
 
@@ -449,7 +449,6 @@ WorldTab:CreateToggle({
             FullbrightConnection:Disconnect()
             FullbrightConnection = nil
          end
-         -- КОРРЕКТНЫЙ СБРОС К ОРИГИНАЛЬНЫМ НАСТРОЙКАМ ИГРЫ
          Lighting.Ambient = OrigAmbient
          Lighting.OutdoorAmbient = OrigOutdoorAmbient
          Lighting.Brightness = OrigBrightness
@@ -461,25 +460,38 @@ WorldTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (ОБНОВЛЕННЫЙ УМНЫЙ ФАРМ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ МЕНЮ-СПИСОК ЕДЫ)]
 ----------------------------------------------------
 
--- Переменные для Умного автофарма ЕДЫ с БЕЛЫМ СПИСКОМ
 local AutoFoodEnabled = false
 local FoodRadius = 1000
 local FoodLimit = 16
--- Строка со всеми предметами по умолчанию (без пиццы)
-local FoodWhitelistRaw = "burger, water, hotdog, cookie, soda, apple, lemon, banana, ice cream, crisps, chips, cola, bloxy, bob, donut, frikadeller, meatball"
 
-BaseTab:CreateSection("⚡ Advanced Smart Food Auto-Farm (With Whitelist)")
+-- Полная таблица доступной еды для выбора в меню
+local AllFoodList = {
+   "Burger", "Water", "Hotdog", "Cookie", "Soda", "Apple", "Lemon", 
+   "Banana", "Ice Cream", "Crisps", "Chips", "Cola", "Bloxy", "Bob", 
+   "Donut", "Frikadeller", "Meatball"
+}
 
-BaseTab:CreateInput({
-   Name = "Food Whitelist (Keywords)",
-   PlaceholderText = "burger, donut, cola...",
-   CurrentValue = "burger, water, hotdog, cookie, soda, apple, lemon, banana, ice cream, crisps, chips, cola, bloxy, bob, donut, frikadeller, meatball",
-   RemoveTextAfterFocusLost = false,
-   Callback = function(Text)
-      FoodWhitelistRaw = Text
+-- Текущие выбранные элементы (по умолчанию включены ВСЕ)
+local SelectedFoodItems = {
+   "Burger", "Water", "Hotdog", "Cookie", "Soda", "Apple", "Lemon", 
+   "Banana", "Ice Cream", "Crisps", "Chips", "Cola", "Bloxy", "Bob", 
+   "Donut", "Frikadeller", "Meatball"
+}
+
+BaseTab:CreateSection("⚡ Interactive Food Auto-Farm (Menu Selector)")
+
+-- УДОБНОЕ МЕНЮ ВЫБОРА ЕДЫ С ГАЛОЧКАМИ
+BaseTab:CreateDropdown({
+   Name = "Select Food to Collect",
+   Options = AllFoodList,
+   CurrentOption = SelectedFoodItems,
+   MultipleOptions = true, -- ВКЛЮЧАЕМ МНОЖЕСТВЕННЫЙ ВЫБОР
+   Flag = "FoodMenuSelectorDropdown",
+   Callback = function(Options)
+      SelectedFoodItems = Options -- Моментально обновляем список того, что нужно собирать
    end,
 })
 
@@ -522,12 +534,6 @@ BaseTab:CreateToggle({
                local actionRemote = system and system:FindFirstChild("Action")
                
                if hrp then
-                  -- ДИНАМИЧЕСКИЙ РАЗБОР БЕЛОГО СПИСКА ИЗ СТРОКИ В ТАБЛИЦУ НА КАЖДОМ ЦИКЛЕ
-                  local keywords = {}
-                  for word in string.gmatch(string.lower(FoodWhitelistRaw), "([^,%s]+)") do
-                     table.insert(keywords, word)
-                  end
-
                   local originalLocation = hrp.CFrame
                   local foodCollected = 0
                   local parts = workspace:GetPartBoundsInRadius(hrp.Position, FoodRadius)
@@ -540,16 +546,15 @@ BaseTab:CreateToggle({
                         processedModels[model] = true
                         local lowerName = string.lower(model.Name)
                         
-                        -- Проверка предмета по твоему белому списку keywords
+                        -- Проверяем, есть ли этот предмет в выбранных в нашем меню
                         local isWhitelisted = false
-                        for i = 1, #keywords do
-                           if string.find(lowerName, keywords[i]) then
+                        for i = 1, #SelectedFoodItems do
+                           if string.find(lowerName, string.lower(SelectedFoodItems[i])) then
                               isWhitelisted = true
                               break
                            end
                         end
                         
-                        -- Собираем только если прошел проверку белого списка
                         if isWhitelisted then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
@@ -579,14 +584,14 @@ BaseTab:CreateToggle({
                      hrp.CFrame = originalLocation
                   end
                end
-               task.wait(3) -- Безопасный интервал проверок
+               task.wait(3)
             end
          end)
       end
    end
 })
 
--- НАСТРОЙКИ ДЛЯ АПТЕЧЕК (ОСТАЛИСЬ КЛАССИЧЕСКИМИ, БЕЗ ИЗМЕНЕНИЙ)
+-- НАСТРОЙКИ ДЛЯ АПТЕЧЕК (ОСТАЛИСЬ КЛАССИЧЕСКИМИ БЕЗ ИЗМЕНЕНИЙ)
 local AutoMedkitsEnabled = false
 local MedkitRadius = 1000
 local MedkitLimit = 16
@@ -643,7 +648,6 @@ BaseTab:CreateToggle({
                      if model and not processedModels[model] then
                         processedModels[model] = true
                         
-                        -- Классический поиск по слову medkit
                         if string.find(string.lower(model.Name), "medkit") then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
                            hrp.CFrame = modelCenterCFrame
