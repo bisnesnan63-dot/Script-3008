@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V12.1",
+   Name = "SCP-3008 Ultimate Hub V12.2",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Fullbright Toggle)",
+   LoadingSubtitle = "by Nastya (Sliders & Fullbright Fix)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -31,6 +31,14 @@ local Camera = workspace.CurrentCamera
 local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local UserInputService = game:GetService("UserInputService")
+
+-- СОХРАНЕНИЕ ОРИГИНАЛЬНЫХ НАСТРОЕК СВЕТА ДЛЯ КОРРЕКТНОГО ВЫКЛЮЧЕНИЯ
+local Lighting = game:GetService("Lighting")
+local OrigAmbient = Lighting.Ambient
+local OrigOutdoorAmbient = Lighting.OutdoorAmbient
+local OrigBrightness = Lighting.Brightness
+local OrigFogEnd = Lighting.FogEnd
+local OrigShadows = Lighting.GlobalShadows
 
 ----------------------------------------------------
 -- [ВКЛАДКА 1: PLAYER MOD (ФУНКЦИИ ИГРОКА)]
@@ -416,7 +424,7 @@ WorldTab:CreateToggle({
    end
 })
 
--- ДИНАМИЧЕСКИЙ ПОЛЗУНОК-ПЕРЕКЛЮЧАТЕЛЬ FULLBRIGHT (БЛОКИРУЕТ ТЕМНОТУ И ТУМАН)
+-- ИСПРАВЛЕННЫЙ ПОЛНОЦЕННЫЙ FULLBRIGHT (ТЕПЕРЬ ВЫКЛЮЧАЕТСЯ НА 100%)
 local FullbrightEnabled = false
 local FullbrightConnection = nil
 
@@ -426,10 +434,8 @@ WorldTab:CreateToggle({
    Flag = "FullbrightDynamicToggle",
    Callback = function(Value)
       FullbrightEnabled = Value
-      local Lighting = game:GetService("Lighting")
       
       if FullbrightEnabled then
-         -- Постоянно форсим свет, игнорируя ночные скрипты игры
          FullbrightConnection = RunService.Heartbeat:Connect(function()
             Lighting.Ambient = Color3.fromRGB(255, 255, 255)
             Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
@@ -437,168 +443,228 @@ WorldTab:CreateToggle({
             Lighting.FogEnd = 9e9
             Lighting.GlobalShadows = false
          end)
-         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Enabled! Fog and Night disabled.", Duration = 3})
+         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Enabled!", Duration = 3})
       else
-         -- Отключаем форс, возвращая стандартный цикл игры
          if FullbrightConnection then
             FullbrightConnection:Disconnect()
             FullbrightConnection = nil
          end
-         Lighting.GlobalShadows = true
-         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Disabled. Normal game cycle resumed.", Duration = 3})
+         -- КОРРЕКТНЫЙ СБРОС К ОРИГИНАЛЬНЫМ НАСТРОЙКАМ ИГРЫ
+         Lighting.Ambient = OrigAmbient
+         Lighting.OutdoorAmbient = OrigOutdoorAmbient
+         Lighting.Brightness = OrigBrightness
+         Lighting.FogEnd = OrigFogEnd
+         Lighting.GlobalShadows = OrigShadows
+         Rayfield:Notify({Title = "Fullbright", Content = "Fullbright Disabled! Normal game environment restored.", Duration = 3})
       end
    end
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (АВТОФАРМ, ТОЧКИ И КАФЕТЕРИЙ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (ПОЛЗУНКИ И АВТОФАРМЫ)]
 ----------------------------------------------------
--- Пицца ("pizza") полностью исключена из таблицы поиска
 local FoodKeywords = {
    "burger", "water", "hotdog", "cookie", "soda", 
    "apple", "lemon", "banana", "ice cream", "crisps", 
    "chips", "cola", "bloxy", "bob", "donut", "frikadeller", "meatball"
 }
 
-BaseTab:CreateButton({
-   Name = "Turbo Collect 16 Food (No Pizza | Radius 1000)",
-   Callback = function()
-      local char = LocalPlayer.Character
-      local hrp = char and char:FindFirstChild("HumanoidRootPart")
-      local system = char and char:FindFirstChild("System")
-      local actionRemote = system and system:FindFirstChild("Action")
-      
-      if not hrp then 
-         Rayfield:Notify({Title = "Error", Content = "Character not found!", Duration = 3})
-         return 
-      end
-      
-      local originalLocation = hrp.CFrame
-      local foodCollected = 0
-      
-      Rayfield:Notify({
-         Title = "Turbo Farm Started",
-         Content = "Scanning 1000 studs radius for food (Excluding Pizza)...",
-         Duration = 2
-      })
-      
-      local parts = workspace:GetPartBoundsInRadius(hrp.Position, 1000)
-      local processedModels = {}
-      
-      for _, part in pairs(parts) do
-         if foodCollected >= 16 then break end
-         local model = part:FindFirstAncestorOfClass("Model")
-         if model and not processedModels[model] then
-            processedModels[model] = true
-            local lowerName = string.lower(model.Name)
-            local isFood = false
-            
-            for i = 1, #FoodKeywords do
-               if string.find(lowerName, FoodKeywords[i]) then
-                  isFood = true
-                  break
-               end
-            end
-            
-            -- Дополнительная жесткая фильтрация против пиццы
-            if isFood and not string.find(lowerName, "pizza") then
-               local modelCenterCFrame, _ = model:GetBoundingBox()
-               hrp.CFrame = modelCenterCFrame
-               task.wait(0.01) -- Турбо-задержка
-               
-               if actionRemote then
-                  pcall(function()
-                     if actionRemote:IsA("RemoteFunction") then
-                        actionRemote:InvokeServer("Store", {["Model"] = model})
-                     else
-                        actionRemote:FireServer("Store", {["Model"] = model})
-                     end
-                     pcall(function() actionRemote:FireServer("Store", model) end)
-                  end)
-               end
-               
-               for _, child in pairs(model:GetDescendants()) do
-                  if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
-                  if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
-               end
-               foodCollected = foodCollected + 1
-               task.wait(0.01) -- Турбо-задержка
-            end
-         end
-      end
-      hrp.CFrame = originalLocation
-      Rayfield:Notify({
-         Title = "Farm Completed",
-         Content = "Successfully collected " .. tostring(foodCollected) .. " non-pizza items!",
-         Duration = 4
-      })
+-- Настройки ползунков для Еды
+local AutoFoodEnabled = false
+local FoodRadius = 1000
+local FoodLimit = 16
+
+BaseTab:CreateSection("⚡ Auto-Farm Food Configuration (No Pizza)")
+
+BaseTab:CreateSlider({
+   Name = "Food Scan Radius",
+   Range = {100, 2000},
+   Increment = 50,
+   Suffix = "Studs",
+   CurrentValue = 1000,
+   Flag = "FoodRadiusSlider",
+   Callback = function(Value)
+      FoodRadius = Value
    end
 })
 
-BaseTab:CreateButton({
-   Name = "Turbo Collect 16 Medkits (Radius 1000)",
-   Callback = function()
-      local char = LocalPlayer.Character
-      local hrp = char and char:FindFirstChild("HumanoidRootPart")
-      local system = char and char:FindFirstChild("System")
-      local actionRemote = system and system:FindFirstChild("Action")
-      
-      if not hrp then 
-         Rayfield:Notify({Title = "Error", Content = "Character not found!", Duration = 3})
-         return 
-      end
-      
-      local originalLocation = hrp.CFrame
-      local medkitsCollected = 0
-      
-      Rayfield:Notify({
-         Title = "Medkit Farm Started",
-         Content = "Scanning 1000 studs radius for Medkits...",
-         Duration = 2
-      })
-      
-      local parts = workspace:GetPartBoundsInRadius(hrp.Position, 1000)
-      local processedModels = {}
-      
-      for _, part in pairs(parts) do
-         if medkitsCollected >= 16 then break end
-         local model = part:FindFirstAncestorOfClass("Model")
-         if model and not processedModels[model] then
-            processedModels[model] = true
-            
-            if string.find(string.lower(model.Name), "medkit") then
-               local modelCenterCFrame, _ = model:GetBoundingBox()
-               hrp.CFrame = modelCenterCFrame
-               task.wait(0.01) -- Турбо-задержка
-               
-               if actionRemote then
-                  pcall(function()
-                     if actionRemote:IsA("RemoteFunction") then
-                        actionRemote:InvokeServer("Store", {["Model"] = model})
-                     else
-                        actionRemote:FireServer("Store", {["Model"] = model})
-                     end
-                     pcall(function() actionRemote:FireServer("Store", model) end)
-                  end)
-               end
-               
-               for _, child in pairs(model:GetDescendants()) do
-                  if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
-                  if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
-               end
-               medkitsCollected = medkitsCollected + 1
-               task.wait(0.01) -- Турбо-задержка
-            end
-         end
-      end
-      hrp.CFrame = originalLocation
-      Rayfield:Notify({
-         Title = "Medkit Farm Completed",
-         Content = "Successfully collected " .. tostring(medkitsCollected) .. " Medkits!",
-         Duration = 4
-      })
+BaseTab:CreateSlider({
+   Name = "Food Inventory Limit",
+   Range = {1, 16},
+   Increment = 1,
+   Suffix = "Items",
+   CurrentValue = 16,
+   Flag = "FoodLimitSlider",
+   Callback = function(Value)
+      FoodLimit = Value
    end
 })
+
+BaseTab:CreateToggle({
+   Name = "Enable Loop Food Auto-Farm",
+   CurrentValue = false,
+   Flag = "AutoFoodToggleLoop",
+   Callback = function(Value)
+      AutoFoodEnabled = Value
+      if AutoFoodEnabled then
+         task.spawn(function()
+            while AutoFoodEnabled do
+               local char = LocalPlayer.Character
+               local hrp = char and char:FindFirstChild("HumanoidRootPart")
+               local system = char and char:FindFirstChild("System")
+               local actionRemote = system and system:FindFirstChild("Action")
+               
+               if hrp then
+                  local originalLocation = hrp.CFrame
+                  local foodCollected = 0
+                  local parts = workspace:GetPartBoundsInRadius(hrp.Position, FoodRadius)
+                  local processedModels = {}
+                  
+                  for _, part in pairs(parts) do
+                     if not AutoFoodEnabled or foodCollected >= FoodLimit then break end
+                     local model = part:FindFirstAncestorOfClass("Model")
+                     if model and not processedModels[model] then
+                        processedModels[model] = true
+                        local lowerName = string.lower(model.Name)
+                        local isFood = false
+                        
+                        for i = 1, #FoodKeywords do
+                           if string.find(lowerName, FoodKeywords[i]) then
+                              isFood = true
+                              break
+                           end
+                        end
+                        
+                        if isFood and not string.find(lowerName, "pizza") then
+                           local modelCenterCFrame, _ = model:GetBoundingBox()
+                           hrp.CFrame = modelCenterCFrame
+                           task.wait(0.01) -- Турбо
+                           
+                           if actionRemote then
+                              pcall(function()
+                                 if actionRemote:IsA("RemoteFunction") then
+                                    actionRemote:InvokeServer("Store", {["Model"] = model})
+                                 else
+                                    actionRemote:FireServer("Store", {["Model"] = model})
+                                 end
+                                 pcall(function() actionRemote:FireServer("Store", model) end)
+                              end)
+                           end
+                           
+                           for _, child in pairs(model:GetDescendants()) do
+                              if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
+                              if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
+                           end
+                           foodCollected = foodCollected + 1
+                           task.wait(0.01)
+                        end
+                     end
+                  end
+                  if foodCollected > 0 then
+                     hrp.CFrame = originalLocation
+                  end
+               end
+               task.wait(3) -- Пауза между проверками, чтобы не крашить сервер
+            end
+         end)
+      end
+   end
+})
+
+-- Настройки ползунков для Аптечек
+local AutoMedkitsEnabled = false
+local MedkitRadius = 1000
+local MedkitLimit = 16
+
+BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration")
+
+BaseTab:CreateSlider({
+   Name = "Medkit Scan Radius",
+   Range = {100, 2000},
+   Increment = 50,
+   Suffix = "Studs",
+   CurrentValue = 1000,
+   Flag = "MedkitRadiusSlider",
+   Callback = function(Value)
+      MedkitRadius = Value
+   end
+})
+
+BaseTab:CreateSlider({
+   Name = "Medkit Inventory Limit",
+   Range = {1, 16},
+   Increment = 1,
+   Suffix = "Items",
+   CurrentValue = 16,
+   Flag = "MedkitLimitSlider",
+   Callback = function(Value)
+      MedkitLimit = Value
+   end
+})
+
+BaseTab:CreateToggle({
+   Name = "Enable Loop Medkit Auto-Farm",
+   CurrentValue = false,
+   Flag = "AutoMedkitsToggleLoop",
+   Callback = function(Value)
+      AutoMedkitsEnabled = Value
+      if AutoMedkitsEnabled then
+         task.spawn(function()
+            while AutoMedkitsEnabled do
+               local char = LocalPlayer.Character
+               local hrp = char and char:FindFirstChild("HumanoidRootPart")
+               local system = char and char:FindFirstChild("System")
+               local actionRemote = system and system:FindFirstChild("Action")
+               
+               if hrp then
+                  local originalLocation = hrp.CFrame
+                  local medkitsCollected = 0
+                  local parts = workspace:GetPartBoundsInRadius(hrp.Position, MedkitRadius)
+                  local processedModels = {}
+                  
+                  for _, part in pairs(parts) do
+                     if not AutoMedkitsEnabled or medkitsCollected >= MedkitLimit then break end
+                     local model = part:FindFirstAncestorOfClass("Model")
+                     if model and not processedModels[model] then
+                        processedModels[model] = true
+                        
+                        if string.find(string.lower(model.Name), "medkit") then
+                           local modelCenterCFrame, _ = model:GetBoundingBox()
+                           hrp.CFrame = modelCenterCFrame
+                           task.wait(0.01) -- Турбо
+                           
+                           if actionRemote then
+                              pcall(function()
+                                 if actionRemote:IsA("RemoteFunction") then
+                                    actionRemote:InvokeServer("Store", {["Model"] = model})
+                                 else
+                                    actionRemote:FireServer("Store", {["Model"] = model})
+                                 end
+                                 pcall(function() actionRemote:FireServer("Store", model) end)
+                              end)
+                           end
+                           
+                           for _, child in pairs(model:GetDescendants()) do
+                              if child:IsA("ClickDetector") and fireclickdetector then fireclickdetector(child) end
+                              if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
+                           end
+                           medkitsCollected = medkitsCollected + 1
+                           task.wait(0.01)
+                        end
+                     end
+                  end
+                  if medkitsCollected > 0 then
+                     hrp.CFrame = originalLocation
+                  end
+               end
+               task.wait(3) -- Пауза между проверками
+            end
+         end)
+      end
+   end
+})
+
+BaseTab:CreateSection("Other Base Settings")
 
 BaseTab:CreateButton({
    Name = "Teleport to Cafeteria (Find Beans/Bob)",
@@ -638,7 +704,7 @@ BaseTab:CreateButton({
       else
          Rayfield:Notify({
             Title = "Not Found",
-            Content = "Beans/Bob are not loaded in your render distance. Walk around or change server!",
+            Content = "Beans/Bob are not loaded in your render distance. Walk around!",
             Duration = 5
          })
       end
