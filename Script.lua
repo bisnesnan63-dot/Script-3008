@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V14.1",
+   Name = "SCP-3008 Ultimate Hub V15.0",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Optimized & Fixed)",
+   LoadingSubtitle = "by Nastya (The Architect Update)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -71,18 +71,38 @@ PlayerTab:CreateButton({
    end
 })
 
+-- УЛУЧШЕННЫЙ ТЕЛЕПОРТ С ОБХОДОМ ОГРАНИЧЕНИЯ ДИСТАНЦИИ
 PlayerTab:CreateButton({
-   Name = "Teleport to Selected",
+   Name = "Advanced Teleport (Infinite Distance)",
    Callback = function()
       if selectedPlayerName ~= "" and Players:FindFirstChild(selectedPlayerName) then
-         local target = Players[selectedPlayerName].Character
-         if target and target:FindFirstChild("HumanoidRootPart") then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = target.HumanoidRootPart.CFrame
+         local targetPlayer = Players[selectedPlayerName]
+         local targetChar = targetPlayer.Character
+         
+         if targetChar and targetChar:FindFirstChild("HumanoidRootPart") then
+            local targetPos = targetChar.HumanoidRootPart.Position
+            
+            Rayfield:Notify({Title = "Teleporting...", Content = "Forcing chunks to load at target location!", Duration = 2})
+            
+            -- Фикс StreamingEnabled: Принудительно загружаем мир вокруг игрока
+            pcall(function()
+               LocalPlayer:RequestStreamAroundAsync(targetPos)
+            end)
+            task.wait(0.1)
+            
+            -- Безопасный перенос персонажа
+            LocalPlayer.Character.HumanoidRootPart.CFrame = targetChar.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
          else
-            Rayfield:Notify({Title = "Error", Content = "Target has no character!", Duration = 3})
+            -- Попытка телепорта по сохраненным координатам игрока в системе репликации
+            local targetModel = workspace:FindFirstChild(selectedPlayerName)
+            if targetModel and targetModel:FindFirstChild("HumanoidRootPart") then
+               LocalPlayer.Character.HumanoidRootPart.CFrame = targetModel.HumanoidRootPart.CFrame + Vector3.new(0, 2, 0)
+            else
+               Rayfield:Notify({Title = "Error", Content = "Target player is too far or dead! Try again in 3 seconds.", Duration = 4})
+            end
          end
       else
-         Rayfield:Notify({Title = "Error", Content = "Player not selected!", Duration = 3})
+         Rayfield:Notify({Title = "Error", Content = "Player not selected or left the game!", Duration = 3})
       end
    end
 })
@@ -269,8 +289,6 @@ WorldTab:CreateToggle({
                local descendants = workspace:GetDescendants()
                for i, obj in pairs(descendants) do
                   if not ESP_Enabled then break end
-                  
-                  -- ОПТИМИЗАЦИЯ: Предотвращаем зависание игры на огромных картах
                   if i % 200 == 0 then task.wait() end
                   
                   if obj:IsA("Model") and obj.PrimaryPart then
@@ -389,7 +407,6 @@ WorldTab:CreateToggle({
                      tracer.Parent = player.Character
                   end
                   
-                  -- ФИКС ТРЕЙСЕРОВ: Правильный расчет направления в локальном пространстве координат
                   tracer.Adornee = myHrp
                   local relativePos = myHrp.CFrame:PointToObjectSpace(targetHrp.Position)
                   tracer.CFrame = CFrame.lookAt(Vector3.new(0, 0, 0), relativePos)
@@ -466,7 +483,7 @@ WorldTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (УМНЫЙ АВТОФАРМ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ ФАРМ И СТРОИТЕЛЬ)]
 ----------------------------------------------------
 local AutoFoodEnabled = false
 local FoodRadius = 1000
@@ -484,7 +501,7 @@ local SelectedFoodItems = {
    "Donut", "Frikadeller", "Meatball"
 }
 
-BaseTab:CreateSection("⚡ Interactive Food Auto-Farm (Menu Selector)")
+BaseTab:CreateSection("⚡ Interactive Food Auto-Farm")
 
 BaseTab:CreateDropdown({
    Name = "Select Food to Collect",
@@ -548,7 +565,6 @@ BaseTab:CreateToggle({
                         processedModels[model] = true
                         local lowerName = string.lower(model.Name)
                         
-                        -- ФИКС ПРОВЕРКИ БЕЛОГО СПИСКА (Поддержка массивов и словарей Rayfield)
                         local isWhitelisted = false
                         for k, v in pairs(SelectedFoodItems) do
                            local itemName = (type(k) == "string") and k or tostring(v)
@@ -565,7 +581,6 @@ BaseTab:CreateToggle({
                            hrp.CFrame = modelCenterCFrame
                            task.wait(0.02)
                            
-                           -- Безопасный вызов без спама пакетами
                            pcall(function()
                               if actionRemote:IsA("RemoteFunction") then
                                  actionRemote:InvokeServer("Store", {["Model"] = model})
@@ -594,11 +609,80 @@ BaseTab:CreateToggle({
    end
 })
 
+-- НОВАЯ ФУНКЦИЯ: АВТОПОСТРОЙКА СРЕДНЕГО ДОМА ИЗ ПОДДОНОВ
+BaseTab:CreateSection("🏗️ Instant Base Architect")
+
+BaseTab:CreateButton({
+   Name = "Auto-Build Medium Pallet House",
+   Callback = function()
+      local char = LocalPlayer.Character
+      local hrp = char and char:FindFirstChild("HumanoidRootPart")
+      if not hrp then return end
+      
+      Rayfield:Notify({Title = "Building started", Content = "Searching for pallets nearby...", Duration = 3})
+      
+      -- Ищем все поддоны (Pallets) на сервере в радиусе 1000 блоков
+      local foundPallets = {}
+      for _, obj in pairs(workspace:GetDescendants()) do
+         if obj:IsA("Model") and string.find(string.lower(obj.Name), "pallet") then
+            if obj.PrimaryPart and (obj.PrimaryPart.Position - hrp.Position).Magnitude < 1000 then
+               table.insert(foundPallets, obj)
+            end
+         end
+      end
+      
+      if #foundPallets < 7 then
+         Rayfield:Notify({Title = "Build Failed", Content = "Not enough pallets found in render distance (Need 7, found " .. tostring(#foundPallets) .. ")", Duration = 5})
+         return
+      end
+      
+      -- Чертеж нашего дома (смещение CFrame относительно центральной позиции игрока)
+      local baseCFrame = hrp.CFrame
+      local blueprint = {
+         -- 4 основные стены (перевернуты вертикально набок)
+         [1] = baseCFrame * CFrame.new(-12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)), -- Левая стена
+         [2] = baseCFrame * CFrame.new(12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)),  -- Правая стена
+         [3] = baseCFrame * CFrame.new(0, 4, 12) * CFrame.Angles(math.rad(90), 0, 0),  -- Задняя стена
+         
+         -- Лицевая стена с проходом (две плиты по бокам, в центре дыра)
+         [4] = baseCFrame * CFrame.new(-6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0), 
+         [5] = baseCFrame * CFrame.new(6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0),
+         
+         -- Крыша / Потолок (Ложатся плашмя сверху стен)
+         [6] = baseCFrame * CFrame.new(-6, 11, 0) * CFrame.Angles(0, 0, 0),
+         [7] = baseCFrame * CFrame.new(6, 11, 0) * CFrame.Angles(0, 0, 0),
+      }
+      
+      -- Строим по чертежу
+      for index, targetCFrame in ipairs(blueprint) do
+         local pallet = foundPallets[index]
+         if pallet and pallet.PrimaryPart then
+            -- Сдвигаем поддон на нужную позицию чертежа
+            pallet:SetPrimaryPartCFrame(targetCFrame)
+            
+            -- Пробуем зафиксировать физику, если деталь unanchored
+            pcall(function()
+               for _, part in pairs(pallet:GetDescendants()) do
+                  if part:IsA("BasePart") then
+                     part.Velocity = Vector3.new(0,0,0)
+                     part.RotVelocity = Vector3.new(0,0,0)
+                  end
+               end
+            end)
+            task.wait(0.05) -- Небольшая пауза, чтобы физика Roblox не сходила с ума
+         end
+      end
+      
+      Rayfield:Notify({Title = "Success!", Content = "Medium Pallet House fully generated around you!", Duration = 4})
+   end
+})
+
+-- НАСТРОЙКИ ДЛЯ АПТЕЧЕК
 local AutoMedkitsEnabled = false
 local MedkitRadius = 1000
 local MedkitLimit = 16
 
-BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration (Classic)")
+BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration")
 
 BaseTab:CreateSlider({
    Name = "Medkit Scan Radius",
