@@ -10,7 +10,7 @@ end
 local Window = Rayfield:CreateWindow({
    Name = "SCP-3008 Ultimate Hub V15.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Nastya (Safe & Optimized)",
+   LoadingSubtitle = "by Ropi (Safe & Optimized)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
