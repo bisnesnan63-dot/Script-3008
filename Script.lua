@@ -8,9 +8,9 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V15.1",
+   Name = "SCP-3008 Ultimate Hub V15.2",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Safe & Optimized)",
+   LoadingSubtitle = "by Nastya (Fixed Time Tracker)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -71,7 +71,6 @@ PlayerTab:CreateButton({
    end
 })
 
--- ПОЛНОСТЬЮ ПЕРЕРАБОТАННЫЙ И НАДЕЖНЫЙ ТЕЛЕПОРТ
 PlayerTab:CreateButton({
    Name = "Advanced Teleport (Infinite Distance)",
    Callback = function()
@@ -860,6 +859,21 @@ ServerTab:CreateSection("Time & Status")
 
 local TimeOverlayEnabled = false
 local ScreenGui = nil
+local cachedTimeLabel = nil
+
+-- Функция для умного поиска оригинальных часов игры на экране
+local function getRealGameTime()
+   if cachedTimeLabel and cachedTimeLabel.Parent then
+      return cachedTimeLabel.Text
+   end
+   for _, v in pairs(LocalPlayer:WaitForChild("PlayerGui"):GetDescendants()) do
+      if v:IsA("TextLabel") and string.match(v.Text, "^%d%d:%d%d$") then
+         cachedTimeLabel = v
+         return v.Text
+      end
+   end
+   return nil
+end
 
 ServerTab:CreateToggle({
    Name = "Show Day/Night Overlay",
@@ -896,31 +910,48 @@ ServerTab:CreateToggle({
             TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
             TimerLabel.TextScaled = true
             TimerLabel.Font = Enum.Font.GothamBold
-            TimerLabel.Text = "Calculating..."
+            TimerLabel.Text = "Scanning UI..."
             TimerLabel.Parent = Frame
             
+            -- Новая, пуленепробиваемая логика разбора экранного времени
             task.spawn(function()
                while true do
                   if TimeOverlayEnabled and ScreenGui and ScreenGui.Enabled then
-                     local ct = Lighting.ClockTime
-                     local phase = ""
-                     local percent = 0
-                     
-                     if ct >= 6 and ct < 18 then
-                        phase = "DAY"
-                        percent = math.floor(((ct - 6) / 12) * 100)
-                        TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
-                     else
-                        phase = "NIGHT"
-                        if ct >= 18 then
-                           percent = math.floor(((ct - 18) / 12) * 100)
-                        else
-                           percent = math.floor(((ct + 6) / 12) * 100)
+                     local timeStr = getRealGameTime()
+                     if timeStr then
+                        local hour, minute = string.match(timeStr, "(%d%d):(%d%d)")
+                        hour = tonumber(hour)
+                        minute = tonumber(minute)
+                        
+                        if hour and minute then
+                           local totalMinutes = hour * 60 + minute
+                           local phase = ""
+                           local percent = 0
+                           
+                           -- День в SCP-3008 идет строго с 06:00 до 18:00
+                           if totalMinutes >= 360 and totalMinutes < 1080 then
+                              phase = "DAY"
+                              local passed = totalMinutes - 360
+                              percent = math.floor((passed / 720) * 100)
+                              TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0) -- Жёлтый для Дня
+                           else
+                              phase = "NIGHT"
+                              local passed = 0
+                              if totalMinutes >= 1080 then
+                                 passed = totalMinutes - 1080
+                              else
+                                 passed = 360 + totalMinutes -- Добавляем время, прошедшее после полуночи
+                              end
+                              percent = math.floor((passed / 720) * 100)
+                              TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255) -- Голубой для Ночи
+                           end
+                           
+                           TimerLabel.Text = phase .. ": " .. percent .. "%"
                         end
-                        TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+                     else
+                        TimerLabel.Text = "Searching HUD..."
+                        TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
                      end
-                     
-                     TimerLabel.Text = phase .. ": " .. percent .. "%"
                   end
                   task.wait(0.5)
                end
