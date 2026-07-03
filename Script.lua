@@ -10,7 +10,7 @@ end
 local Window = Rayfield:CreateWindow({
    Name = "SCP-3008 Ultimate Hub V15.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by ROPI (Safe & Optimized)",
+   LoadingSubtitle = "by Nastya (Safe & Optimized)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV7",
@@ -18,7 +18,7 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- СОЗДАНИЕ ОСТАВШИХСЯ ВКЛАДОК (ВКЛАДКА СТРОИТЕЛЬСТВА УБРАНА)
+-- СОЗДАНИЕ ВКЛАДОК
 local PlayerTab = Window:CreateTab("Player Mod", 4483362458)
 local WorldTab = Window:CreateTab("World & ESP", 4483362458)
 local BaseTab = Window:CreateTab("Base & Items", 4483362458)
@@ -80,24 +80,20 @@ PlayerTab:CreateButton({
          local localChar = LocalPlayer.Character
          
          if targetPlayer and localChar then
-            -- Пытаемся найти персонажа игрока в Players или напрямую в Workspace
             local targetChar = targetPlayer.Character or workspace:FindFirstChild(selectedPlayerName)
             
             if targetChar then
-               -- Ищем HumanoidRootPart, либо любую другую базовую часть тела игрока
                local targetPart = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildOfClass("Part")
                
                if targetPart then
                   local targetPos = targetPart.Position
                   Rayfield:Notify({Title = "Teleporting...", Content = "Requesting chunks and moving to target!", Duration = 2})
                   
-                  -- Принудительно заставляем клиент подгрузить карту в месте нахождения игрока
                   pcall(function()
                      LocalPlayer:RequestStreamAroundAsync(targetPos)
                   end)
                   task.wait(0.15)
                   
-                  -- Безопасное перемещение через PivotTo (работает стабильнее, чем прямое изменение CFrame у HRP)
                   localChar:PivotTo(CFrame.new(targetPos + Vector3.new(0, 3, 0)))
                else
                   Rayfield:Notify({Title = "Error", Content = "Target parts are not fully loaded yet. Try again!", Duration = 3})
@@ -858,8 +854,87 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 4: SERVER MANAGER]
+-- [ВКЛАДКА 4: SERVER MANAGER & TIME TRACKER]
 ----------------------------------------------------
+ServerTab:CreateSection("Time & Status")
+
+local TimeOverlayEnabled = false
+local ScreenGui = nil
+
+ServerTab:CreateToggle({
+   Name = "Show Day/Night Overlay",
+   CurrentValue = false,
+   Flag = "TimeOverlayToggle",
+   Callback = function(Value)
+      TimeOverlayEnabled = Value
+      
+      if TimeOverlayEnabled then
+         if not ScreenGui then
+            ScreenGui = Instance.new("ScreenGui")
+            ScreenGui.Name = "TimeOverlayGui"
+            ScreenGui.ResetOnSpawn = false
+            ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+            
+            local Frame = Instance.new("Frame")
+            Frame.Name = "TimeFrame"
+            Frame.Size = UDim2.new(0, 200, 0, 60)
+            Frame.Position = UDim2.new(0.5, -100, 0.05, 0)
+            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+            Frame.BorderSizePixel = 0
+            Frame.Active = true
+            Frame.Draggable = true
+            Frame.Parent = ScreenGui
+            
+            local Corner = Instance.new("UICorner")
+            Corner.CornerRadius = UDim.new(0, 8)
+            Corner.Parent = Frame
+            
+            local TimerLabel = Instance.new("TextLabel")
+            TimerLabel.Name = "TimerLabel"
+            TimerLabel.Size = UDim2.new(1, 0, 1, 0)
+            TimerLabel.BackgroundTransparency = 1
+            TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            TimerLabel.TextScaled = true
+            TimerLabel.Font = Enum.Font.GothamBold
+            TimerLabel.Text = "Calculating..."
+            TimerLabel.Parent = Frame
+            
+            task.spawn(function()
+               while true do
+                  if TimeOverlayEnabled and ScreenGui and ScreenGui.Enabled then
+                     local ct = Lighting.ClockTime
+                     local phase = ""
+                     local percent = 0
+                     
+                     if ct >= 6 and ct < 18 then
+                        phase = "DAY"
+                        percent = math.floor(((ct - 6) / 12) * 100)
+                        TimerLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+                     else
+                        phase = "NIGHT"
+                        if ct >= 18 then
+                           percent = math.floor(((ct - 18) / 12) * 100)
+                        else
+                           percent = math.floor(((ct + 6) / 12) * 100)
+                        end
+                        TimerLabel.TextColor3 = Color3.fromRGB(0, 200, 255)
+                     end
+                     
+                     TimerLabel.Text = phase .. ": " .. percent .. "%"
+                  end
+                  task.wait(0.5)
+               end
+            end)
+         end
+         ScreenGui.Enabled = true
+      else
+         if ScreenGui then
+            ScreenGui.Enabled = false
+         end
+      end
+   end
+})
+
 local AgeLabel = ServerTab:CreateLabel("Current Server Age: Calculating...")
 
 task.spawn(function()
