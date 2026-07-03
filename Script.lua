@@ -18,10 +18,11 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
--- СОЗДАНИЕ ВСЕХ ВКЛАДОК
+-- СОЗДАНИЕ ВСЕХ ВКЛАДОК (ДОБАВЛЕНА ВКЛАДКА СТРОИТЕЛЬСТВА)
 local PlayerTab = Window:CreateTab("Player Mod", 4483362458)
 local WorldTab = Window:CreateTab("World & ESP", 4483362458)
 local BaseTab = Window:CreateTab("Base & Items", 4483362458)
+local BuildTab = Window:CreateTab("Auto Building", 4483362458) -- Вот она
 local ServerTab = Window:CreateTab("Server Manager", 4483362458)
 
 local RunService = game:GetService("RunService")
@@ -483,7 +484,7 @@ WorldTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ ФАРМ И СТРОИТЕЛЬ)]
+-- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ ФАРМ)]
 ----------------------------------------------------
 local AutoFoodEnabled = false
 local FoodRadius = 1000
@@ -606,74 +607,6 @@ BaseTab:CreateToggle({
             end
          end)
       end
-   end
-})
-
--- НОВАЯ ФУНКЦИЯ: АВТОПОСТРОЙКА СРЕДНЕГО ДОМА ИЗ ПОДДОНОВ
-BaseTab:CreateSection("🏗️ Instant Base Architect")
-
-BaseTab:CreateButton({
-   Name = "Auto-Build Medium Pallet House",
-   Callback = function()
-      local char = LocalPlayer.Character
-      local hrp = char and char:FindFirstChild("HumanoidRootPart")
-      if not hrp then return end
-      
-      Rayfield:Notify({Title = "Building started", Content = "Searching for pallets nearby...", Duration = 3})
-      
-      -- Ищем все поддоны (Pallets) на сервере в радиусе 1000 блоков
-      local foundPallets = {}
-      for _, obj in pairs(workspace:GetDescendants()) do
-         if obj:IsA("Model") and string.find(string.lower(obj.Name), "pallet") then
-            if obj.PrimaryPart and (obj.PrimaryPart.Position - hrp.Position).Magnitude < 1000 then
-               table.insert(foundPallets, obj)
-            end
-         end
-      end
-      
-      if #foundPallets < 7 then
-         Rayfield:Notify({Title = "Build Failed", Content = "Not enough pallets found in render distance (Need 7, found " .. tostring(#foundPallets) .. ")", Duration = 5})
-         return
-      end
-      
-      -- Чертеж нашего дома (смещение CFrame относительно центральной позиции игрока)
-      local baseCFrame = hrp.CFrame
-      local blueprint = {
-         -- 4 основные стены (перевернуты вертикально набок)
-         [1] = baseCFrame * CFrame.new(-12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)), -- Левая стена
-         [2] = baseCFrame * CFrame.new(12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)),  -- Правая стена
-         [3] = baseCFrame * CFrame.new(0, 4, 12) * CFrame.Angles(math.rad(90), 0, 0),  -- Задняя стена
-         
-         -- Лицевая стена с проходом (две плиты по бокам, в центре дыра)
-         [4] = baseCFrame * CFrame.new(-6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0), 
-         [5] = baseCFrame * CFrame.new(6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0),
-         
-         -- Крыша / Потолок (Ложатся плашмя сверху стен)
-         [6] = baseCFrame * CFrame.new(-6, 11, 0) * CFrame.Angles(0, 0, 0),
-         [7] = baseCFrame * CFrame.new(6, 11, 0) * CFrame.Angles(0, 0, 0),
-      }
-      
-      -- Строим по чертежу
-      for index, targetCFrame in ipairs(blueprint) do
-         local pallet = foundPallets[index]
-         if pallet and pallet.PrimaryPart then
-            -- Сдвигаем поддон на нужную позицию чертежа
-            pallet:SetPrimaryPartCFrame(targetCFrame)
-            
-            -- Пробуем зафиксировать физику, если деталь unanchored
-            pcall(function()
-               for _, part in pairs(pallet:GetDescendants()) do
-                  if part:IsA("BasePart") then
-                     part.Velocity = Vector3.new(0,0,0)
-                     part.RotVelocity = Vector3.new(0,0,0)
-                  end
-               end
-            end)
-            task.wait(0.05) -- Небольшая пауза, чтобы физика Roblox не сходила с ума
-         end
-      end
-      
-      Rayfield:Notify({Title = "Success!", Content = "Medium Pallet House fully generated around you!", Duration = 4})
    end
 })
 
@@ -920,7 +853,77 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 4: SERVER MANAGER]
+-- [ВКЛАДКА 4: AUTO BUILDING (ПЕРЕНЕСЕНО СЮДА)]
+----------------------------------------------------
+BuildTab:CreateSection("🏗️ Instant Base Architect")
+
+BuildTab:CreateButton({
+   Name = "Auto-Build Medium Pallet House",
+   Callback = function()
+      local char = LocalPlayer.Character
+      local hrp = char and char:FindFirstChild("HumanoidRootPart")
+      if not hrp then return end
+      
+      Rayfield:Notify({Title = "Building started", Content = "Searching for pallets nearby...", Duration = 3})
+      
+      -- Ищем все поддоны (Pallets) на сервере в радиусе 1000 блоков
+      local foundPallets = {}
+      for _, obj in pairs(workspace:GetDescendants()) do
+         if obj:IsA("Model") and string.find(string.lower(obj.Name), "pallet") then
+            if obj.PrimaryPart and (obj.PrimaryPart.Position - hrp.Position).Magnitude < 1000 then
+               table.insert(foundPallets, obj)
+            end
+         end
+      end
+      
+      if #foundPallets < 7 then
+         Rayfield:Notify({Title = "Build Failed", Content = "Not enough pallets found in render distance (Need 7, found " .. tostring(#foundPallets) .. ")", Duration = 5})
+         return
+      end
+      
+      -- Чертеж нашего дома (смещение CFrame относительно центральной позиции игрока)
+      local baseCFrame = hrp.CFrame
+      local blueprint = {
+         -- 4 основные стены (перевернуты вертикально набок)
+         [1] = baseCFrame * CFrame.new(-12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)), -- Левая стена
+         [2] = baseCFrame * CFrame.new(12, 4, 0) * CFrame.Angles(0, 0, math.rad(90)),  -- Правая стена
+         [3] = baseCFrame * CFrame.new(0, 4, 12) * CFrame.Angles(math.rad(90), 0, 0),  -- Задняя стена
+         
+         -- Лицевая стена с проходом (две плиты по бокам, в центре дыра)
+         [4] = baseCFrame * CFrame.new(-6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0), 
+         [5] = baseCFrame * CFrame.new(6, 4, -12) * CFrame.Angles(math.rad(90), 0, 0),
+         
+         -- Крыша / Потолок (Ложатся плашмя сверху стен)
+         [6] = baseCFrame * CFrame.new(-6, 11, 0) * CFrame.Angles(0, 0, 0),
+         [7] = baseCFrame * CFrame.new(6, 11, 0) * CFrame.Angles(0, 0, 0),
+      }
+      
+      -- Строим по чертежу
+      for index, targetCFrame in ipairs(blueprint) do
+         local pallet = foundPallets[index]
+         if pallet and pallet.PrimaryPart then
+            -- Сдвигаем поддон на нужную позицию чертежа
+            pallet:SetPrimaryPartCFrame(targetCFrame)
+            
+            -- Пробуем зафиксировать физику, если деталь unanchored
+            pcall(function()
+               for _, part in pairs(pallet:GetDescendants()) do
+                  if part:IsA("BasePart") then
+                     part.Velocity = Vector3.new(0,0,0)
+                     part.RotVelocity = Vector3.new(0,0,0)
+                  end
+               end
+            end)
+            task.wait(0.05) -- Небольшая пауза, чтобы физика Roblox не сходила с ума
+         end
+      end
+      
+      Rayfield:Notify({Title = "Success!", Content = "Medium Pallet House fully generated around you!", Duration = 4})
+   end
+})
+
+----------------------------------------------------
+-- [ВКЛАДКА 5: SERVER MANAGER]
 ----------------------------------------------------
 local AgeLabel = ServerTab:CreateLabel("Current Server Age: Calculating...")
 
