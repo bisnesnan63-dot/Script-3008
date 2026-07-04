@@ -35,7 +35,7 @@ end)
 local Window = Rayfield:CreateWindow({
    Name = "SCP-3008 Ultimate Hub V19",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Instant Pallet Grabber Update)",
+   LoadingSubtitle = "by Ropi (External Script Update)",
    ConfigurationSaving = {
       Enabled = true,
       FolderName = "SCP3008ProFixedV19",
@@ -65,7 +65,7 @@ local OrigBrightness = Lighting.Brightness
 local OrigFogEnd = Lighting.FogEnd
 local OrigShadows = Lighting.GlobalShadows
 
--- ГЛОБАЛЬНЫЕ ТАБЛИЦЫ ДЛЯ ВАЙПОИНТОВ (Перенесены наверх для общей видимости)
+-- ГЛОБАЛЬНЫЕ ТАБЛИЦЫ ДЛЯ ВАЙПОИНТОВ
 local Waypoints = {}
 local TargetWaypointName = ""
 local SelectedWaypoint = ""
@@ -604,124 +604,17 @@ BaseTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- 📦 [НОВЫЙ РАЗДЕЛ: INSTANT GRAB PALLET]
+-- 🔗 [РАЗДЕЛ ЗАМЕНЫ: ЗАПУСК ВНЕШНЕГО СКРИПТА 3008]
 ----------------------------------------------------
-BaseTab:CreateSection("📦 Instant Grab Pallet")
+BaseTab:CreateSection("🔗 External RANSBLOX Script Launcher")
 
-local InstantPalletEnabled = false
-local MaxPalletsToGrab = 5
-local WaypointIgnoreRadius = 50
-local PalletGrabDelay = 0.2 -- Зависимость от интернета
-
-BaseTab:CreateSlider({
-   Name = "Max Pallets to Pull",
-   Range = {1, 50},
-   Increment = 1,
-   Suffix = "Pallets",
-   CurrentValue = 5,
-   Flag = "MaxPalletsGrabSlider",
-   Callback = function(Value)
-      MaxPalletsToGrab = Value
-   end
-})
-
-BaseTab:CreateSlider({
-   Name = "Waypoint Protect Radius",
-   Range = {10, 500},
-   Increment = 10,
-   Suffix = "Studs",
-   CurrentValue = 50,
-   Flag = "WaypointIgnoreRadiusSlider",
-   Callback = function(Value)
-      WaypointIgnoreRadius = Value
-   end
-})
-
-BaseTab:CreateSlider({
-   Name = "Network Delay (Internet Stability)",
-   Range = {0.05, 1.0},
-   Increment = 0.05,
-   Suffix = "Sec",
-   CurrentValue = 0.2,
-   Flag = "PalletGrabDelaySlider",
-   Callback = function(Value)
-      PalletGrabDelay = Value
-   end
-})
-
-BaseTab:CreateToggle({
-   Name = "Enable Instant Pallet Grab",
-   CurrentValue = false,
-   Flag = "InstantPalletGrabToggle",
-   Callback = function(Value)
-      InstantPalletEnabled = Value
-      if InstantPalletEnabled then
-         Rayfield:Notify({Title = "Pallet Grabber", Content = "Scanning space and bypassing waypoints...", Duration = 3})
-         task.spawn(function()
-            while InstantPalletEnabled do
-               local char = LocalPlayer.Character
-               local hrp = char and char:FindFirstChild("HumanoidRootPart")
-               local system = char and char:FindFirstChild("System")
-               local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
-               
-               if hrp and actionRemote then
-                  local pulledCount = 0
-                  
-                  for _, model in pairs(workspace:GetDescendants()) do
-                     if not InstantPalletEnabled or pulledCount >= MaxPalletsToGrab then break end
-                     
-                     if model:IsA("Model") and string.find(string.lower(model.Name), "pallet") and model.PrimaryPart then
-                        local palletPos = model.PrimaryPart.Position
-                        
-                        -- Проверка: Находится ли паллет возле какой-либо точки сохранения (Waypoints)
-                        local insideProtectedZone = false
-                        for _, wpPos in pairs(Waypoints) do
-                           if (palletPos - wpPos).Magnitude <= WaypointIgnoreRadius then
-                              insideProtectedZone = true
-                              break
-                           end
-                        end
-                        
-                        -- Проверка: Если паллет уже притянут и лежит в радиусе 12 от игрока, не трогаем его
-                        if (palletPos - hrp.Position).Magnitude < 12 then
-                           insideProtectedZone = true
-                        end
-                        
-                        if not insideProtectedZone then
-                           pulledCount = pulledCount + 1
-                           
-                           pcall(function()
-                              -- Берем паллет удаленно
-                              if actionRemote:IsA("RemoteFunction") then
-                                 actionRemote:InvokeServer("Pickup", model)
-                              else
-                                 actionRemote:FireServer("Pickup", model)
-                              end
-                              
-                              -- Адаптивная задержка под интернет
-                              task.wait(PalletGrabDelay / 2)
-                              
-                              -- Устанавливаем прямо перед игроком
-                              local dropCFrame = hrp.CFrame * CFrame.new(0, 2, -7)
-                              if actionRemote:IsA("RemoteFunction") then
-                                 actionRemote:InvokeServer("Place", dropCFrame, model)
-                              else
-                                 actionRemote:FireServer("Place", dropCFrame, model)
-                                 actionRemote:FireServer("Drop", dropCFrame)
-                              end
-                           end)
-                           
-                           task.wait(PalletGrabDelay / 2)
-                        end
-                     end
-                  end
-               end
-               task.wait(2.5) -- Интервал между сканированиями локации
-            end
-         end)
-      else
-         Rayfield:Notify({Title = "Pallet Grabber", Content = "Stopped scanning.", Duration = 3})
-      end
+BaseTab:CreateButton({
+   Name = "Execute RANSBLOX SCP-3008 Script",
+   Callback = function()
+      Rayfield:Notify({Title = "Executing...", Content = "Loading external RANSBLOX script via loadstring", Duration = 3})
+      pcall(function()
+         loadstring(game:HttpGet("https://raw.githubusercontent.com/YTRANSBLOX/RANSBLOX-SCRIPT/refs/heads/main/3008.lua"))()
+      end)
    end
 })
 
