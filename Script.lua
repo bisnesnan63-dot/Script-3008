@@ -8,22 +8,34 @@ if not success or not Rayfield then
 end
 
 ----------------------------------------------------
--- 🛡️ АНТИ-ЧИТ BYPASS (ПРЕДОТВРАЩАЕТ ЛОКАЛЬНЫЕ КИКИ И ПРОВЕРКИ)
+-- 🛡️ АНТИ-ЧИТ BYPASS V2 (БЛОКИРУЕТ EXPLOIT DETECTED)
 ----------------------------------------------------
 pcall(function()
    local oldNamecall
    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
       local method = getnamecallmethod()
-      -- Блокируем локальный кик от античита
-      if not checkcaller() and (method == "Kick" or method == "kick") then
-         return task.wait(9e9) 
+      
+      if not checkcaller() then
+         -- 1. Блокируем локальные кики
+         if method == "Kick" or method == "kick" then
+            return task.wait(9e9) 
+         end
+         
+         -- 2. Блокируем триггеры античита, отправляющие репорты на сервер
+         if method == "FireServer" or method == "InvokeServer" then
+            local remoteName = string.lower(tostring(self.Name))
+            if string.find(remoteName, "exploit") or string.find(remoteName, "cheat") or 
+               string.find(remoteName, "kick") or string.find(remoteName, "ban") or 
+               string.find(remoteName, "report") then
+               return -- Молча отменяем отправку лога античита
+            end
+         end
       end
       return oldNamecall(self, ...)
    end)
 
    local oldIndex
    oldIndex = hookmetamethod(game, "__index", function(self, key)
-      -- Врем античиту про нашу скорость и прыжок, если он их проверяет
       if not checkcaller() and self:IsA("Humanoid") then
          if key == "WalkSpeed" then return 16 end
          if key == "JumpPower" then return 50 end
@@ -34,13 +46,13 @@ end)
 ----------------------------------------------------
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V17",
+   Name = "SCP-3008 Ultimate Hub V17.1",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Server-Side Builder)",
+   LoadingSubtitle = "by Ropi (Bypass Edition)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV17",
-      FileName = "BossHubV17"
+      FolderName = "SCP3008ProFixedV17_1",
+      FileName = "BossHubV17_1"
    }
 })
 
@@ -106,19 +118,13 @@ PlayerTab:CreateButton({
          
          if targetPlayer and localChar then
             local targetChar = targetPlayer.Character or workspace:FindFirstChild(selectedPlayerName)
-            
             if targetChar then
                local targetPart = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildOfClass("Part")
-               
                if targetPart then
                   local targetPos = targetPart.Position
                   Rayfield:Notify({Title = "Teleporting...", Content = "Requesting chunks and moving to target!", Duration = 2})
-                  
-                  pcall(function()
-                     LocalPlayer:RequestStreamAroundAsync(targetPos)
-                  end)
+                  pcall(function() LocalPlayer:RequestStreamAroundAsync(targetPos) end)
                   task.wait(0.15)
-                  
                   localChar:PivotTo(CFrame.new(targetPos + Vector3.new(0, 3, 0)))
                else
                   Rayfield:Notify({Title = "Error", Content = "Target parts are not fully loaded yet. Try again!", Duration = 3})
@@ -155,17 +161,14 @@ PlayerTab:CreateToggle({
          if hrp and hum then
             local camera = workspace.CurrentCamera
             hum.PlatformStand = true
-            
             bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.Parent = hrp
-            
             bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
             bg.CFrame = hrp.CFrame
             bg.Parent = hrp
-            
             FlyConnection = RunService.RenderStepped:Connect(function()
                if not Flying or not hrp or not hum then
                   if FlyConnection then FlyConnection:Disconnect() end
@@ -174,10 +177,8 @@ PlayerTab:CreateToggle({
                   if hum then hum.PlatformStand = false end
                   return
                end
-               
                local moveDir = hum.MoveDirection
                local camCFrame = camera.CFrame
-               
                if moveDir.Magnitude > 0 then
                   local camLook = camCFrame.LookVector
                   local camRight = camCFrame.RightVector
@@ -185,7 +186,6 @@ PlayerTab:CreateToggle({
                   local flatRight = Vector3.new(camRight.X, 0, camRight.Z).Unit
                   local forwardDot = moveDir:Dot(flatLook)
                   local rightDot = moveDir:Dot(flatRight)
-                  
                   bv.Velocity = (camLook * forwardDot + camRight * rightDot) * FlySpeed
                else
                   bv.Velocity = Vector3.new(0, 0, 0)
@@ -881,7 +881,7 @@ BaseTab:CreateButton({
 ----------------------------------------------------
 -- [ОБНОВЛЕНО: BASE BLUEPRINT SERVER-SIDE BUILDER]
 ----------------------------------------------------
-BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE)")
+BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE BYPASS)")
 
 local BlueprintFolderName = "SCP3008_Blueprints"
 
@@ -894,7 +894,7 @@ end
 local BlueprintSaveRadius = 50
 local CurrentBlueprintName = "MyAwesomeBase"
 local SelectedBlueprintFile = ""
-local ServerBuildDelay = 0.8 
+local ReplicationDelay = 0.40 
 
 BaseTab:CreateInput({
    Name = "Blueprint Name (For Saving)",
@@ -999,19 +999,19 @@ BaseTab:CreateButton({
 })
 
 BaseTab:CreateSlider({
-   Name = "Server Build Speed (Delay)",
-   Range = {0.3, 2.0},
-   Increment = 0.1,
+   Name = "Anti-Cheat Sync Delay",
+   Range = {0.2, 1.5},
+   Increment = 0.05,
    Suffix = "Seconds",
-   CurrentValue = 0.8,
+   CurrentValue = 0.40,
    Flag = "ServerBuildDelaySlider",
    Callback = function(Value)
-      ServerBuildDelay = Value
+      ReplicationDelay = Value
    end
 })
 
 BaseTab:CreateButton({
-   Name = "🏗️ BUILD BASE (SERVER-SIDE)",
+   Name = "🏗️ BUILD BASE (BYPASS SERVER ANTI-CHEAT)",
    Callback = function()
       if not readfile or SelectedBlueprintFile == "" then
          Rayfield:Notify({Title = "Error", Content = "Please select a valid blueprint first!", Duration = 3})
@@ -1037,19 +1037,16 @@ BaseTab:CreateButton({
       local jsonData = readfile(fileName)
       local baseData = HttpService:JSONDecode(jsonData)
       
-      -- Запоминаем точку, где ты стоишь (это центр будущей базы)
       local originalRootCFrame = hrp.CFrame
-      
       local usedModels = {}
       local loadedCount = 0
 
-      Rayfield:Notify({Title = "Server Building...", Content = "Building visible base. DO NOT MOVE!", Duration = 5})
+      Rayfield:Notify({Title = "Server Building...", Content = "Delay set to " .. ReplicationDelay .. "s to bypass anti-cheat. DO NOT MOVE!", Duration = 5})
 
       task.spawn(function()
          for _, itemData in pairs(baseData) do
             local foundModel = nil
             
-            -- Ищем свободный предмет по всей карте
             for _, model in pairs(workspace:GetDescendants()) do
                if model:IsA("Model") and model.Name == itemData.Name and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
                   if not usedModels[model] then
@@ -1062,14 +1059,13 @@ BaseTab:CreateButton({
             if foundModel then
                usedModels[foundModel] = true
                
-               -- Высчитываем итоговую позицию для установки
                local pos = Vector3.new(unpack(itemData.Pos))
                local rot = CFrame.Angles(unpack(itemData.Rot))
                local targetPlacementCFrame = originalRootCFrame * CFrame.new(pos) * rot
                
-               -- ШАГ 1: Телепорт к предмету
+               -- ШАГ 1: Телепорт к предмету и ОЖИДАНИЕ СЕРВЕРА
                hrp.CFrame = foundModel.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
-               task.wait(0.1) 
+               task.wait(ReplicationDelay) 
                
                -- ШАГ 2: Берем предмет
                pcall(function()
@@ -1080,11 +1076,11 @@ BaseTab:CreateButton({
                   end
                end)
                
-               task.wait(ServerBuildDelay / 2)
+               task.wait(ReplicationDelay / 2)
                
-               -- ШАГ 3: Телепорт обратно на базу
+               -- ШАГ 3: Телепорт обратно на базу и ОЖИДАНИЕ
                hrp.CFrame = originalRootCFrame
-               task.wait(0.1)
+               task.wait(ReplicationDelay)
                
                -- ШАГ 4: Ставим предмет
                pcall(function()
@@ -1097,11 +1093,9 @@ BaseTab:CreateButton({
                end)
                
                loadedCount = loadedCount + 1
-               task.wait(ServerBuildDelay / 2)
             end
          end
          
-         -- Возвращаем игрока в центр по завершении
          hrp.CFrame = originalRootCFrame
          Rayfield:Notify({Title = "Build Complete!", Content = "Placed " .. loadedCount .. "/" .. #baseData .. " items. Everyone can see it!", Duration = 5})
       end)
