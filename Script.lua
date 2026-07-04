@@ -8,13 +8,13 @@ if not success or not Rayfield then
 end
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V16.5",
+   Name = "SCP-3008 Ultimate Hub V17",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Absolute Sync + Blueprints)",
+   LoadingSubtitle = "by Ropi (Server-Side Builder)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV10",
-      FileName = "BossHubV16_5"
+      FolderName = "SCP3008ProFixedV17",
+      FileName = "BossHubV17"
    }
 })
 
@@ -853,9 +853,9 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
--- [НОВОЕ: BASE BLUEPRINT SAVER & LOADER]
+-- [ОБНОВЛЕНО: BASE BLUEPRINT SERVER-SIDE BUILDER]
 ----------------------------------------------------
-BaseTab:CreateSection("🏗️ Base Blueprint (Save & Load)")
+BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE)")
 
 local BlueprintFolderName = "SCP3008_Blueprints"
 
@@ -868,7 +868,7 @@ end
 local BlueprintSaveRadius = 50
 local CurrentBlueprintName = "MyAwesomeBase"
 local SelectedBlueprintFile = ""
-local LoadDelay = 0.05 
+local ServerBuildDelay = 0.8 
 
 BaseTab:CreateInput({
    Name = "Blueprint Name (For Saving)",
@@ -972,8 +972,20 @@ BaseTab:CreateButton({
    end
 })
 
+BaseTab:CreateSlider({
+   Name = "Server Build Speed (Delay)",
+   Range = {0.3, 2.0},
+   Increment = 0.1,
+   Suffix = "Seconds",
+   CurrentValue = 0.8,
+   Flag = "ServerBuildDelaySlider",
+   Callback = function(Value)
+      ServerBuildDelay = Value
+   end
+})
+
 BaseTab:CreateButton({
-   Name = "🏗️ BUILD BASE (LOAD FILE)",
+   Name = "🏗️ BUILD BASE (SERVER-SIDE)",
    Callback = function()
       if not readfile or SelectedBlueprintFile == "" then
          Rayfield:Notify({Title = "Error", Content = "Please select a valid blueprint first!", Duration = 3})
@@ -982,7 +994,13 @@ BaseTab:CreateButton({
 
       local char = LocalPlayer.Character
       local hrp = char and char:FindFirstChild("HumanoidRootPart")
-      if not hrp then return end
+      local system = char and char:FindFirstChild("System")
+      local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
+
+      if not hrp or not actionRemote then 
+         Rayfield:Notify({Title = "Error", Content = "Cannot find Action Remote. Ensure you are fully spawned.", Duration = 3})
+         return 
+      end
 
       local fileName = BlueprintFolderName .. "/" .. SelectedBlueprintFile
       if not isfile(fileName) then
@@ -992,17 +1010,20 @@ BaseTab:CreateButton({
 
       local jsonData = readfile(fileName)
       local baseData = HttpService:JSONDecode(jsonData)
-      local rootCFrame = hrp.CFrame
+      
+      -- Запоминаем точку, где ты стоишь (это центр будущей базы)
+      local originalRootCFrame = hrp.CFrame
       
       local usedModels = {}
       local loadedCount = 0
 
-      Rayfield:Notify({Title = "Building...", Content = "Searching map for needed items. This may take a moment.", Duration = 4})
+      Rayfield:Notify({Title = "Server Building...", Content = "Building visible base. DO NOT MOVE!", Duration = 5})
 
       task.spawn(function()
          for _, itemData in pairs(baseData) do
             local foundModel = nil
             
+            -- Ищем свободный предмет по всей карте
             for _, model in pairs(workspace:GetDescendants()) do
                if model:IsA("Model") and model.Name == itemData.Name and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
                   if not usedModels[model] then
@@ -1015,26 +1036,48 @@ BaseTab:CreateButton({
             if foundModel then
                usedModels[foundModel] = true
                
+               -- Высчитываем итоговую позицию для установки
                local pos = Vector3.new(unpack(itemData.Pos))
                local rot = CFrame.Angles(unpack(itemData.Rot))
-               local targetCFrame = rootCFrame * CFrame.new(pos) * rot
+               local targetPlacementCFrame = originalRootCFrame * CFrame.new(pos) * rot
                
-               for _, part in pairs(foundModel:GetDescendants()) do
-                  if part:IsA("BasePart") then
-                     part.Anchored = false
-                     part.Velocity = Vector3.new(0,0,0)
-                     part.RotVelocity = Vector3.new(0,0,0)
+               -- ШАГ 1: Телепорт к предмету
+               hrp.CFrame = foundModel.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
+               task.wait(0.1) 
+               
+               -- ШАГ 2: Берем предмет
+               pcall(function()
+                  if actionRemote:IsA("RemoteFunction") then
+                     actionRemote:InvokeServer("Pickup", foundModel)
+                  else
+                     actionRemote:FireServer("Pickup", foundModel)
                   end
-               end
+               end)
                
-               foundModel:PivotTo(targetCFrame)
+               task.wait(ServerBuildDelay / 2)
+               
+               -- ШАГ 3: Телепорт обратно на базу
+               hrp.CFrame = originalRootCFrame
+               task.wait(0.1)
+               
+               -- ШАГ 4: Ставим предмет
+               pcall(function()
+                  if actionRemote:IsA("RemoteFunction") then
+                     actionRemote:InvokeServer("Place", targetPlacementCFrame, foundModel)
+                  else
+                     actionRemote:FireServer("Place", targetPlacementCFrame, foundModel)
+                     actionRemote:FireServer("Drop", targetPlacementCFrame)
+                  end
+               end)
+               
                loadedCount = loadedCount + 1
-               
-               task.wait(LoadDelay)
+               task.wait(ServerBuildDelay / 2)
             end
          end
          
-         Rayfield:Notify({Title = "Build Complete!", Content = "Successfully placed " .. loadedCount .. "/" .. #baseData .. " items.", Duration = 5})
+         -- Возвращаем игрока в центр по завершении
+         hrp.CFrame = originalRootCFrame
+         Rayfield:Notify({Title = "Build Complete!", Content = "Placed " .. loadedCount .. "/" .. #baseData .. " items. Everyone can see it!", Duration = 5})
       end)
    end
 })
