@@ -1,4 +1,3 @@
--- УМНАЯ ДВОЙНАЯ ЗАГРУЗКА БИБЛИОТЕКИ ИНТЕРФЕЙСА
 local success, Rayfield = pcall(function()
    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 end)
@@ -34,13 +33,13 @@ end)
 ----------------------------------------------------
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V18",
+   Name = "SCP-3008 Ultimate Hub V19",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Server-Side Builder & Grabber)",
+   LoadingSubtitle = "by Ropi (Instant Pallet Grabber Update)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV18",
-      FileName = "BossHubV18"
+      FolderName = "SCP3008ProFixedV19",
+      FileName = "BossHubV19"
    }
 })
 
@@ -65,6 +64,12 @@ local OrigOutdoorAmbient = Lighting.OutdoorAmbient
 local OrigBrightness = Lighting.Brightness
 local OrigFogEnd = Lighting.FogEnd
 local OrigShadows = Lighting.GlobalShadows
+
+-- ГЛОБАЛЬНЫЕ ТАБЛИЦЫ ДЛЯ ВАЙПОИНТОВ (Перенесены наверх для общей видимости)
+local Waypoints = {}
+local TargetWaypointName = ""
+local SelectedWaypoint = ""
+local WaypointDropdown = nil
 
 ----------------------------------------------------
 -- [ВКЛАДКА 1: PLAYER MOD (ФУНКЦИИ ИГРОКА)]
@@ -513,7 +518,6 @@ WorldTab:CreateToggle({
 ----------------------------------------------------
 -- [ВКЛАДКА 3: BASE, ITEMS & GRABBER (ИНТЕРАКТИВ И СБОР)]
 ----------------------------------------------------
--- 🧲 НОВЫЙ БЛОК: УНИВЕРСАЛЬНЫЙ ГРАБЕР ДЛЯ МЕБЕЛИ И РЕСУРСОВ
 BaseTab:CreateSection("🧲 Advanced Universal Grabber (Magnet)")
 
 local GrabberEnabled = false
@@ -569,7 +573,6 @@ BaseTab:CreateToggle({
                         
                         if isValid then
                            pcall(function()
-                              -- Подбираем предмет
                               if actionRemote:IsA("RemoteFunction") then
                                  actionRemote:InvokeServer("Pickup", model)
                               else
@@ -578,7 +581,6 @@ BaseTab:CreateToggle({
                               
                               task.wait(0.1)
                               
-                              -- Ставим и роняем предмет прямо перед игроком
                               local dropCFrame = hrp.CFrame * CFrame.new(0, 1, -5)
                               if actionRemote:IsA("RemoteFunction") then
                                  actionRemote:InvokeServer("Place", dropCFrame, model)
@@ -587,12 +589,12 @@ BaseTab:CreateToggle({
                                  actionRemote:FireServer("Drop", dropCFrame)
                               end
                            end)
-                           task.wait(0.2) -- Небольшая задержка, чтобы не крашнуть сервер/игру
+                           task.wait(0.2)
                         end
                      end
                   end
                end
-               task.wait(1.5) -- Ожидание перед следующим сканированием
+               task.wait(1.5)
             end
          end)
       else
@@ -601,7 +603,131 @@ BaseTab:CreateToggle({
    end
 })
 
--- СТАРЫЙ БЛОК: ЕДА
+----------------------------------------------------
+-- 📦 [НОВЫЙ РАЗДЕЛ: INSTANT GRAB PALLET]
+----------------------------------------------------
+BaseTab:CreateSection("📦 Instant Grab Pallet")
+
+local InstantPalletEnabled = false
+local MaxPalletsToGrab = 5
+local WaypointIgnoreRadius = 50
+local PalletGrabDelay = 0.2 -- Зависимость от интернета
+
+BaseTab:CreateSlider({
+   Name = "Max Pallets to Pull",
+   Range = {1, 50},
+   Increment = 1,
+   Suffix = "Pallets",
+   CurrentValue = 5,
+   Flag = "MaxPalletsGrabSlider",
+   Callback = function(Value)
+      MaxPalletsToGrab = Value
+   end
+})
+
+BaseTab:CreateSlider({
+   Name = "Waypoint Protect Radius",
+   Range = {10, 500},
+   Increment = 10,
+   Suffix = "Studs",
+   CurrentValue = 50,
+   Flag = "WaypointIgnoreRadiusSlider",
+   Callback = function(Value)
+      WaypointIgnoreRadius = Value
+   end
+})
+
+BaseTab:CreateSlider({
+   Name = "Network Delay (Internet Stability)",
+   Range = {0.05, 1.0},
+   Increment = 0.05,
+   Suffix = "Sec",
+   CurrentValue = 0.2,
+   Flag = "PalletGrabDelaySlider",
+   Callback = function(Value)
+      PalletGrabDelay = Value
+   end
+})
+
+BaseTab:CreateToggle({
+   Name = "Enable Instant Pallet Grab",
+   CurrentValue = false,
+   Flag = "InstantPalletGrabToggle",
+   Callback = function(Value)
+      InstantPalletEnabled = Value
+      if InstantPalletEnabled then
+         Rayfield:Notify({Title = "Pallet Grabber", Content = "Scanning space and bypassing waypoints...", Duration = 3})
+         task.spawn(function()
+            while InstantPalletEnabled do
+               local char = LocalPlayer.Character
+               local hrp = char and char:FindFirstChild("HumanoidRootPart")
+               local system = char and char:FindFirstChild("System")
+               local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
+               
+               if hrp and actionRemote then
+                  local pulledCount = 0
+                  
+                  for _, model in pairs(workspace:GetDescendants()) do
+                     if not InstantPalletEnabled or pulledCount >= MaxPalletsToGrab then break end
+                     
+                     if model:IsA("Model") and string.find(string.lower(model.Name), "pallet") and model.PrimaryPart then
+                        local palletPos = model.PrimaryPart.Position
+                        
+                        -- Проверка: Находится ли паллет возле какой-либо точки сохранения (Waypoints)
+                        local insideProtectedZone = false
+                        for _, wpPos in pairs(Waypoints) do
+                           if (palletPos - wpPos).Magnitude <= WaypointIgnoreRadius then
+                              insideProtectedZone = true
+                              break
+                           end
+                        end
+                        
+                        -- Проверка: Если паллет уже притянут и лежит в радиусе 12 от игрока, не трогаем его
+                        if (palletPos - hrp.Position).Magnitude < 12 then
+                           insideProtectedZone = true
+                        end
+                        
+                        if not insideProtectedZone then
+                           pulledCount = pulledCount + 1
+                           
+                           pcall(function()
+                              -- Берем паллет удаленно
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Pickup", model)
+                              else
+                                 actionRemote:FireServer("Pickup", model)
+                              end
+                              
+                              -- Адаптивная задержка под интернет
+                              task.wait(PalletGrabDelay / 2)
+                              
+                              -- Устанавливаем прямо перед игроком
+                              local dropCFrame = hrp.CFrame * CFrame.new(0, 2, -7)
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Place", dropCFrame, model)
+                              else
+                                 actionRemote:FireServer("Place", dropCFrame, model)
+                                 actionRemote:FireServer("Drop", dropCFrame)
+                              end
+                           end)
+                           
+                           task.wait(PalletGrabDelay / 2)
+                        end
+                     end
+                  end
+               end
+               task.wait(2.5) -- Интервал между сканированиями локации
+            end
+         end)
+      else
+         Rayfield:Notify({Title = "Pallet Grabber", Content = "Stopped scanning.", Duration = 3})
+      end
+   end
+})
+
+----------------------------------------------------
+-- СТАРЫЙ БЛОК: ЕДА И ОСТАЛЬНОЕ
+----------------------------------------------------
 local AutoFoodEnabled = false
 local FoodRadius = 1000
 local FoodLimit = 16
@@ -879,11 +1005,6 @@ task.spawn(function()
    end
 end)
 
-local Waypoints = {}
-local TargetWaypointName = ""
-local SelectedWaypoint = ""
-local WaypointDropdown = nil
-
 BaseTab:CreateSection("Advanced Waypoint Manager")
 
 BaseTab:CreateInput({
@@ -968,7 +1089,7 @@ BaseTab:CreateButton({
 })
 
 ----------------------------------------------------
--- [ОБНОВЛЕНО: BASE BLUEPRINT SERVER-SIDE BUILDER]
+-- [BASE BLUEPRINT SERVER-SIDE BUILDER]
 ----------------------------------------------------
 BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE)")
 
@@ -1126,9 +1247,7 @@ BaseTab:CreateButton({
       local jsonData = readfile(fileName)
       local baseData = HttpService:JSONDecode(jsonData)
       
-      -- Запоминаем точку, где ты стоишь (это центр будущей базы)
       local originalRootCFrame = hrp.CFrame
-      
       local usedModels = {}
       local loadedCount = 0
 
@@ -1138,7 +1257,6 @@ BaseTab:CreateButton({
          for _, itemData in pairs(baseData) do
             local foundModel = nil
             
-            -- Ищем свободный предмет по всей карте
             for _, model in pairs(workspace:GetDescendants()) do
                if model:IsA("Model") and model.Name == itemData.Name and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
                   if not usedModels[model] then
@@ -1151,16 +1269,13 @@ BaseTab:CreateButton({
             if foundModel then
                usedModels[foundModel] = true
                
-               -- Высчитываем итоговую позицию для установки
                local pos = Vector3.new(unpack(itemData.Pos))
                local rot = CFrame.Angles(unpack(itemData.Rot))
                local targetPlacementCFrame = originalRootCFrame * CFrame.new(pos) * rot
                
-               -- ШАГ 1: Телепорт к предмету
                hrp.CFrame = foundModel.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
                task.wait(0.1) 
                
-               -- ШАГ 2: Берем предмет
                pcall(function()
                   if actionRemote:IsA("RemoteFunction") then
                      actionRemote:InvokeServer("Pickup", foundModel)
@@ -1171,11 +1286,9 @@ BaseTab:CreateButton({
                
                task.wait(ServerBuildDelay / 2)
                
-               -- ШАГ 3: Телепорт обратно на базу
                hrp.CFrame = originalRootCFrame
                task.wait(0.1)
                
-               -- ШАГ 4: Ставим предмет
                pcall(function()
                   if actionRemote:IsA("RemoteFunction") then
                      actionRemote:InvokeServer("Place", targetPlacementCFrame, foundModel)
@@ -1190,7 +1303,6 @@ BaseTab:CreateButton({
             end
          end
          
-         -- Возвращаем игрока в центр по завершении
          hrp.CFrame = originalRootCFrame
          Rayfield:Notify({Title = "Build Complete!", Content = "Placed " .. loadedCount .. "/" .. #baseData .. " items. Everyone can see it!", Duration = 5})
       end)
