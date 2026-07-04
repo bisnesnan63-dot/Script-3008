@@ -8,26 +8,37 @@ if not success or not Rayfield then
 end
 
 ----------------------------------------------------
--- 🛡️ АНТИ-ЧИТ BYPASS V2 (БЛОКИРУЕТ EXPLOIT DETECTED)
+-- 🛡️ АНТИ-ЧИТ BYPASS V3 (СБРОС ИНЕРЦИИ И БЛОК ЛОГОВ)
 ----------------------------------------------------
 pcall(function()
+   -- 1. Блокируем отправку локальных ошибок экзекутора на сервер
+   local ScriptContext = game:GetService("ScriptContext")
+   local LogService = game:GetService("LogService")
+   
+   if getconnections then
+      pcall(function()
+         for _, conn in pairs(getconnections(ScriptContext.Error)) do conn:Disable() end
+         for _, conn in pairs(getconnections(LogService.MessageOut)) do conn:Disable() end
+      end)
+   end
+
    local oldNamecall
    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
       local method = getnamecallmethod()
       
       if not checkcaller() then
-         -- 1. Блокируем локальные кики
+         -- 2. Блокируем локальные кики
          if method == "Kick" or method == "kick" then
             return task.wait(9e9) 
          end
          
-         -- 2. Блокируем триггеры античита, отправляющие репорты на сервер
+         -- 3. Блокируем триггеры античита
          if method == "FireServer" or method == "InvokeServer" then
             local remoteName = string.lower(tostring(self.Name))
             if string.find(remoteName, "exploit") or string.find(remoteName, "cheat") or 
                string.find(remoteName, "kick") or string.find(remoteName, "ban") or 
-               string.find(remoteName, "report") then
-               return -- Молча отменяем отправку лога античита
+               string.find(remoteName, "report") or string.find(remoteName, "log") then
+               return -- Молча отменяем отправку лога
             end
          end
       end
@@ -46,13 +57,13 @@ end)
 ----------------------------------------------------
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V17.1",
+   Name = "SCP-3008 Ultimate Hub V17.2",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Bypass Edition)",
+   LoadingSubtitle = "by Ropi (Bypass Edition V3)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV17_1",
-      FileName = "BossHubV17_1"
+      FolderName = "SCP3008ProFixedV17_2",
+      FileName = "BossHubV17_2"
    }
 })
 
@@ -125,6 +136,11 @@ PlayerTab:CreateButton({
                   Rayfield:Notify({Title = "Teleporting...", Content = "Requesting chunks and moving to target!", Duration = 2})
                   pcall(function() LocalPlayer:RequestStreamAroundAsync(targetPos) end)
                   task.wait(0.15)
+                  
+                  -- Фикс велосити перед телепортом
+                  if localChar:FindFirstChild("HumanoidRootPart") then
+                     localChar.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                  end
                   localChar:PivotTo(CFrame.new(targetPos + Vector3.new(0, 3, 0)))
                else
                   Rayfield:Notify({Title = "Error", Content = "Target parts are not fully loaded yet. Try again!", Duration = 3})
@@ -606,8 +622,9 @@ BaseTab:CreateToggle({
                         
                         if isWhitelisted then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
+                           hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.02)
+                           task.wait(0.05)
                            
                            pcall(function()
                               if actionRemote:IsA("RemoteFunction") then
@@ -622,11 +639,12 @@ BaseTab:CreateToggle({
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            foodCollected = foodCollected + 1
-                           task.wait(0.02)
+                           task.wait(0.05)
                         end
                      end
                   end
                   if foodCollected > 0 then
+                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                      hrp.CFrame = originalLocation
                   end
                end
@@ -695,8 +713,9 @@ BaseTab:CreateToggle({
                         
                         if string.find(string.lower(model.Name), "medkit") then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
+                           hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.02)
+                           task.wait(0.05)
                            
                            pcall(function()
                               if actionRemote:IsA("RemoteFunction") then
@@ -711,11 +730,12 @@ BaseTab:CreateToggle({
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            medkitsCollected = medkitsCollected + 1
-                           task.wait(0.02)
+                           task.wait(0.05)
                         end
                      end
                   end
                   if medkitsCollected > 0 then
+                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                      hrp.CFrame = originalLocation
                   end
                end
@@ -753,6 +773,7 @@ BaseTab:CreateButton({
       
       if targetModel then
          local modelCenterCFrame, _ = targetModel:GetBoundingBox()
+         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
          hrp.CFrame = modelCenterCFrame + Vector3.new(0, 4, 0)
          Rayfield:Notify({Title = "Success!", Content = "Teleported to Cafeteria near item: " .. targetModel.Name, Duration = 4})
       else
@@ -852,6 +873,7 @@ BaseTab:CreateButton({
       if not hrp then return end
       
       if SelectedWaypoint and Waypoints[SelectedWaypoint] then
+         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
          hrp.CFrame = CFrame.new(Waypoints[SelectedWaypoint])
          Rayfield:Notify({Title = "Teleported", Content = "Arrived safely at: " .. SelectedWaypoint, Duration = 3})
       else
@@ -894,7 +916,7 @@ end
 local BlueprintSaveRadius = 50
 local CurrentBlueprintName = "MyAwesomeBase"
 local SelectedBlueprintFile = ""
-local ReplicationDelay = 0.40 
+local ReplicationDelay = 0.50 -- УВЕЛИЧЕНО ДЛЯ СТАБИЛЬНОСТИ МОБИЛЬНОГО ПИНГА
 
 BaseTab:CreateInput({
    Name = "Blueprint Name (For Saving)",
@@ -1003,7 +1025,7 @@ BaseTab:CreateSlider({
    Range = {0.2, 1.5},
    Increment = 0.05,
    Suffix = "Seconds",
-   CurrentValue = 0.40,
+   CurrentValue = 0.50,
    Flag = "ServerBuildDelaySlider",
    Callback = function(Value)
       ReplicationDelay = Value
@@ -1063,7 +1085,8 @@ BaseTab:CreateButton({
                local rot = CFrame.Angles(unpack(itemData.Rot))
                local targetPlacementCFrame = originalRootCFrame * CFrame.new(pos) * rot
                
-               -- ШАГ 1: Телепорт к предмету и ОЖИДАНИЕ СЕРВЕРА
+               -- ШАГ 1: Телепорт к предмету и ОЖИДАНИЕ СЕРВЕРА (Со сбросом инерции)
+               hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                hrp.CFrame = foundModel.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
                task.wait(ReplicationDelay) 
                
@@ -1078,7 +1101,8 @@ BaseTab:CreateButton({
                
                task.wait(ReplicationDelay / 2)
                
-               -- ШАГ 3: Телепорт обратно на базу и ОЖИДАНИЕ
+               -- ШАГ 3: Телепорт обратно на базу и ОЖИДАНИЕ (Со сбросом инерции)
+               hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                hrp.CFrame = originalRootCFrame
                task.wait(ReplicationDelay)
                
@@ -1096,6 +1120,7 @@ BaseTab:CreateButton({
             end
          end
          
+         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
          hrp.CFrame = originalRootCFrame
          Rayfield:Notify({Title = "Build Complete!", Content = "Placed " .. loadedCount .. "/" .. #baseData .. " items. Everyone can see it!", Duration = 5})
       end)
