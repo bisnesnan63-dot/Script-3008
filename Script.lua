@@ -8,45 +8,22 @@ if not success or not Rayfield then
 end
 
 ----------------------------------------------------
--- 🛡️ АНТИ-ЧИТ BYPASS V3 (СБРОС ИНЕРЦИИ И БЛОК ЛОГОВ)
+-- 🛡️ АНТИ-ЧИТ BYPASS (ПРЕДОТВРАЩАЕТ ЛОКАЛЬНЫЕ КИКИ И ПРОВЕРКИ)
 ----------------------------------------------------
 pcall(function()
-   -- 1. Блокируем отправку локальных ошибок экзекутора на сервер
-   local ScriptContext = game:GetService("ScriptContext")
-   local LogService = game:GetService("LogService")
-   
-   if getconnections then
-      pcall(function()
-         for _, conn in pairs(getconnections(ScriptContext.Error)) do conn:Disable() end
-         for _, conn in pairs(getconnections(LogService.MessageOut)) do conn:Disable() end
-      end)
-   end
-
    local oldNamecall
    oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
       local method = getnamecallmethod()
-      
-      if not checkcaller() then
-         -- 2. Блокируем локальные кики
-         if method == "Kick" or method == "kick" then
-            return task.wait(9e9) 
-         end
-         
-         -- 3. Блокируем триггеры античита
-         if method == "FireServer" or method == "InvokeServer" then
-            local remoteName = string.lower(tostring(self.Name))
-            if string.find(remoteName, "exploit") or string.find(remoteName, "cheat") or 
-               string.find(remoteName, "kick") or string.find(remoteName, "ban") or 
-               string.find(remoteName, "report") or string.find(remoteName, "log") then
-               return -- Молча отменяем отправку лога
-            end
-         end
+      -- Блокируем локальный кик от античита
+      if not checkcaller() and (method == "Kick" or method == "kick") then
+         return task.wait(9e9) 
       end
       return oldNamecall(self, ...)
    end)
 
    local oldIndex
    oldIndex = hookmetamethod(game, "__index", function(self, key)
+      -- Врем античиту про нашу скорость и прыжок, если он их проверяет
       if not checkcaller() and self:IsA("Humanoid") then
          if key == "WalkSpeed" then return 16 end
          if key == "JumpPower" then return 50 end
@@ -57,20 +34,20 @@ end)
 ----------------------------------------------------
 
 local Window = Rayfield:CreateWindow({
-   Name = "SCP-3008 Ultimate Hub V17.2",
+   Name = "SCP-3008 Ultimate Hub V18",
    LoadingTitle = "Studio Production",
-   LoadingSubtitle = "by Ropi (Bypass Edition V3)",
+   LoadingSubtitle = "by Ropi (Server-Side Builder & Grabber)",
    ConfigurationSaving = {
       Enabled = true,
-      FolderName = "SCP3008ProFixedV17_2",
-      FileName = "BossHubV17_2"
+      FolderName = "SCP3008ProFixedV18",
+      FileName = "BossHubV18"
    }
 })
 
 -- СОЗДАНИЕ ВКЛАДОК
 local PlayerTab = Window:CreateTab("Player Mod", 4483362458)
 local WorldTab = Window:CreateTab("World & ESP", 4483362458)
-local BaseTab = Window:CreateTab("Base & Items", 4483362458)
+local BaseTab = Window:CreateTab("Base, Items & Grabber", 4483362458)
 local ServerTab = Window:CreateTab("Server Manager", 4483362458)
 
 local RunService = game:GetService("RunService")
@@ -129,18 +106,19 @@ PlayerTab:CreateButton({
          
          if targetPlayer and localChar then
             local targetChar = targetPlayer.Character or workspace:FindFirstChild(selectedPlayerName)
+            
             if targetChar then
                local targetPart = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChildOfClass("Part")
+               
                if targetPart then
                   local targetPos = targetPart.Position
                   Rayfield:Notify({Title = "Teleporting...", Content = "Requesting chunks and moving to target!", Duration = 2})
-                  pcall(function() LocalPlayer:RequestStreamAroundAsync(targetPos) end)
+                  
+                  pcall(function()
+                     LocalPlayer:RequestStreamAroundAsync(targetPos)
+                  end)
                   task.wait(0.15)
                   
-                  -- Фикс велосити перед телепортом
-                  if localChar:FindFirstChild("HumanoidRootPart") then
-                     localChar.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-                  end
                   localChar:PivotTo(CFrame.new(targetPos + Vector3.new(0, 3, 0)))
                else
                   Rayfield:Notify({Title = "Error", Content = "Target parts are not fully loaded yet. Try again!", Duration = 3})
@@ -177,14 +155,17 @@ PlayerTab:CreateToggle({
          if hrp and hum then
             local camera = workspace.CurrentCamera
             hum.PlatformStand = true
+            
             bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
             bv.Velocity = Vector3.new(0, 0, 0)
             bv.Parent = hrp
+            
             bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
             bg.CFrame = hrp.CFrame
             bg.Parent = hrp
+            
             FlyConnection = RunService.RenderStepped:Connect(function()
                if not Flying or not hrp or not hum then
                   if FlyConnection then FlyConnection:Disconnect() end
@@ -193,8 +174,10 @@ PlayerTab:CreateToggle({
                   if hum then hum.PlatformStand = false end
                   return
                end
+               
                local moveDir = hum.MoveDirection
                local camCFrame = camera.CFrame
+               
                if moveDir.Magnitude > 0 then
                   local camLook = camCFrame.LookVector
                   local camRight = camCFrame.RightVector
@@ -202,6 +185,7 @@ PlayerTab:CreateToggle({
                   local flatRight = Vector3.new(camRight.X, 0, camRight.Z).Unit
                   local forwardDot = moveDir:Dot(flatLook)
                   local rightDot = moveDir:Dot(flatRight)
+                  
                   bv.Velocity = (camLook * forwardDot + camRight * rightDot) * FlySpeed
                else
                   bv.Velocity = Vector3.new(0, 0, 0)
@@ -527,8 +511,97 @@ WorldTab:CreateToggle({
 })
 
 ----------------------------------------------------
--- [ВКЛАДКА 3: BASE & ITEMS (ИНТЕРАКТИВНЫЙ ФАРМ)]
+-- [ВКЛАДКА 3: BASE, ITEMS & GRABBER (ИНТЕРАКТИВ И СБОР)]
 ----------------------------------------------------
+-- 🧲 НОВЫЙ БЛОК: УНИВЕРСАЛЬНЫЙ ГРАБЕР ДЛЯ МЕБЕЛИ И РЕСУРСОВ
+BaseTab:CreateSection("🧲 Advanced Universal Grabber (Magnet)")
+
+local GrabberEnabled = false
+local GrabberRadius = 150
+local GrabberWhitelist = {"Pallet", "Bed", "Couch", "TV", "Table", "Chair", "Desk", "Lamp", "Bookshelf", "Crate", "Box", "Shelf"}
+
+BaseTab:CreateSlider({
+   Name = "Grabber Search Radius",
+   Range = {50, 1000},
+   Increment = 50,
+   Suffix = "Studs",
+   CurrentValue = 150,
+   Flag = "GrabberRadiusSlider",
+   Callback = function(Value)
+      GrabberRadius = Value
+   end
+})
+
+BaseTab:CreateToggle({
+   Name = "Enable Furniture Grabber (Bring Base Items)",
+   CurrentValue = false,
+   Flag = "UniversalGrabberToggle",
+   Callback = function(Value)
+      GrabberEnabled = Value
+      if GrabberEnabled then
+         Rayfield:Notify({Title = "Grabber Activated", Content = "Magnetizing pallets, beds, and furniture to you...", Duration = 3})
+         task.spawn(function()
+            while GrabberEnabled do
+               local char = LocalPlayer.Character
+               local hrp = char and char:FindFirstChild("HumanoidRootPart")
+               local system = char and char:FindFirstChild("System")
+               local actionRemote = system and (system:FindFirstChild("Action") or system:FindFirstChild("Event"))
+               
+               if hrp and actionRemote then
+                  local parts = workspace:GetPartBoundsInRadius(hrp.Position, GrabberRadius)
+                  local processed = {}
+                  
+                  for _, part in pairs(parts) do
+                     if not GrabberEnabled then break end
+                     local model = part:FindFirstAncestorOfClass("Model")
+                     
+                     if model and not processed[model] and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
+                        processed[model] = true
+                        
+                        local lowerName = string.lower(model.Name)
+                        local isValid = false
+                        for _, v in pairs(GrabberWhitelist) do
+                           if string.find(lowerName, string.lower(v)) then
+                              isValid = true
+                              break
+                           end
+                        end
+                        
+                        if isValid then
+                           pcall(function()
+                              -- Подбираем предмет
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Pickup", model)
+                              else
+                                 actionRemote:FireServer("Pickup", model)
+                              end
+                              
+                              task.wait(0.1)
+                              
+                              -- Ставим и роняем предмет прямо перед игроком
+                              local dropCFrame = hrp.CFrame * CFrame.new(0, 1, -5)
+                              if actionRemote:IsA("RemoteFunction") then
+                                 actionRemote:InvokeServer("Place", dropCFrame, model)
+                              else
+                                 actionRemote:FireServer("Place", dropCFrame, model)
+                                 actionRemote:FireServer("Drop", dropCFrame)
+                              end
+                           end)
+                           task.wait(0.2) -- Небольшая задержка, чтобы не крашнуть сервер/игру
+                        end
+                     end
+                  end
+               end
+               task.wait(1.5) -- Ожидание перед следующим сканированием
+            end
+         end)
+      else
+         Rayfield:Notify({Title = "Grabber Deactivated", Content = "Furniture magnet stopped.", Duration = 3})
+      end
+   end
+})
+
+-- СТАРЫЙ БЛОК: ЕДА
 local AutoFoodEnabled = false
 local FoodRadius = 1000
 local FoodLimit = 16
@@ -622,9 +695,8 @@ BaseTab:CreateToggle({
                         
                         if isWhitelisted then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
-                           hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.05)
+                           task.wait(0.02)
                            
                            pcall(function()
                               if actionRemote:IsA("RemoteFunction") then
@@ -639,12 +711,11 @@ BaseTab:CreateToggle({
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            foodCollected = foodCollected + 1
-                           task.wait(0.05)
+                           task.wait(0.02)
                         end
                      end
                   end
                   if foodCollected > 0 then
-                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                      hrp.CFrame = originalLocation
                   end
                end
@@ -659,7 +730,7 @@ local AutoMedkitsEnabled = false
 local MedkitRadius = 1000
 local MedkitLimit = 16
 
-BaseTab:CreateSection("💊 Auto-Farm Medkits Configuration")
+BaseTab:CreateSection("💊 Auto-Farm Medkits")
 
 BaseTab:CreateSlider({
    Name = "Medkit Scan Radius",
@@ -713,9 +784,8 @@ BaseTab:CreateToggle({
                         
                         if string.find(string.lower(model.Name), "medkit") then
                            local modelCenterCFrame, _ = model:GetBoundingBox()
-                           hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                            hrp.CFrame = modelCenterCFrame
-                           task.wait(0.05)
+                           task.wait(0.02)
                            
                            pcall(function()
                               if actionRemote:IsA("RemoteFunction") then
@@ -730,12 +800,11 @@ BaseTab:CreateToggle({
                               if child:IsA("ProximityPrompt") and fireproximityprompt then fireproximityprompt(child) end
                            end
                            medkitsCollected = medkitsCollected + 1
-                           task.wait(0.05)
+                           task.wait(0.02)
                         end
                      end
                   end
                   if medkitsCollected > 0 then
-                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                      hrp.CFrame = originalLocation
                   end
                end
@@ -773,7 +842,6 @@ BaseTab:CreateButton({
       
       if targetModel then
          local modelCenterCFrame, _ = targetModel:GetBoundingBox()
-         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
          hrp.CFrame = modelCenterCFrame + Vector3.new(0, 4, 0)
          Rayfield:Notify({Title = "Success!", Content = "Teleported to Cafeteria near item: " .. targetModel.Name, Duration = 4})
       else
@@ -873,7 +941,6 @@ BaseTab:CreateButton({
       if not hrp then return end
       
       if SelectedWaypoint and Waypoints[SelectedWaypoint] then
-         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
          hrp.CFrame = CFrame.new(Waypoints[SelectedWaypoint])
          Rayfield:Notify({Title = "Teleported", Content = "Arrived safely at: " .. SelectedWaypoint, Duration = 3})
       else
@@ -903,7 +970,7 @@ BaseTab:CreateButton({
 ----------------------------------------------------
 -- [ОБНОВЛЕНО: BASE BLUEPRINT SERVER-SIDE BUILDER]
 ----------------------------------------------------
-BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE BYPASS)")
+BaseTab:CreateSection("🏗️ Base Blueprint (SERVER-SIDE)")
 
 local BlueprintFolderName = "SCP3008_Blueprints"
 
@@ -916,7 +983,7 @@ end
 local BlueprintSaveRadius = 50
 local CurrentBlueprintName = "MyAwesomeBase"
 local SelectedBlueprintFile = ""
-local ReplicationDelay = 0.50 -- УВЕЛИЧЕНО ДЛЯ СТАБИЛЬНОСТИ МОБИЛЬНОГО ПИНГА
+local ServerBuildDelay = 0.8 
 
 BaseTab:CreateInput({
    Name = "Blueprint Name (For Saving)",
@@ -1021,19 +1088,19 @@ BaseTab:CreateButton({
 })
 
 BaseTab:CreateSlider({
-   Name = "Anti-Cheat Sync Delay",
-   Range = {0.2, 1.5},
-   Increment = 0.05,
+   Name = "Server Build Speed (Delay)",
+   Range = {0.3, 2.0},
+   Increment = 0.1,
    Suffix = "Seconds",
-   CurrentValue = 0.50,
+   CurrentValue = 0.8,
    Flag = "ServerBuildDelaySlider",
    Callback = function(Value)
-      ReplicationDelay = Value
+      ServerBuildDelay = Value
    end
 })
 
 BaseTab:CreateButton({
-   Name = "🏗️ BUILD BASE (BYPASS SERVER ANTI-CHEAT)",
+   Name = "🏗️ BUILD BASE (SERVER-SIDE)",
    Callback = function()
       if not readfile or SelectedBlueprintFile == "" then
          Rayfield:Notify({Title = "Error", Content = "Please select a valid blueprint first!", Duration = 3})
@@ -1059,16 +1126,19 @@ BaseTab:CreateButton({
       local jsonData = readfile(fileName)
       local baseData = HttpService:JSONDecode(jsonData)
       
+      -- Запоминаем точку, где ты стоишь (это центр будущей базы)
       local originalRootCFrame = hrp.CFrame
+      
       local usedModels = {}
       local loadedCount = 0
 
-      Rayfield:Notify({Title = "Server Building...", Content = "Delay set to " .. ReplicationDelay .. "s to bypass anti-cheat. DO NOT MOVE!", Duration = 5})
+      Rayfield:Notify({Title = "Server Building...", Content = "Building visible base. DO NOT MOVE!", Duration = 5})
 
       task.spawn(function()
          for _, itemData in pairs(baseData) do
             local foundModel = nil
             
+            -- Ищем свободный предмет по всей карте
             for _, model in pairs(workspace:GetDescendants()) do
                if model:IsA("Model") and model.Name == itemData.Name and model.PrimaryPart and not model:FindFirstChild("Humanoid") then
                   if not usedModels[model] then
@@ -1081,14 +1151,14 @@ BaseTab:CreateButton({
             if foundModel then
                usedModels[foundModel] = true
                
+               -- Высчитываем итоговую позицию для установки
                local pos = Vector3.new(unpack(itemData.Pos))
                local rot = CFrame.Angles(unpack(itemData.Rot))
                local targetPlacementCFrame = originalRootCFrame * CFrame.new(pos) * rot
                
-               -- ШАГ 1: Телепорт к предмету и ОЖИДАНИЕ СЕРВЕРА (Со сбросом инерции)
-               hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+               -- ШАГ 1: Телепорт к предмету
                hrp.CFrame = foundModel.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
-               task.wait(ReplicationDelay) 
+               task.wait(0.1) 
                
                -- ШАГ 2: Берем предмет
                pcall(function()
@@ -1099,12 +1169,11 @@ BaseTab:CreateButton({
                   end
                end)
                
-               task.wait(ReplicationDelay / 2)
+               task.wait(ServerBuildDelay / 2)
                
-               -- ШАГ 3: Телепорт обратно на базу и ОЖИДАНИЕ (Со сбросом инерции)
-               hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+               -- ШАГ 3: Телепорт обратно на базу
                hrp.CFrame = originalRootCFrame
-               task.wait(ReplicationDelay)
+               task.wait(0.1)
                
                -- ШАГ 4: Ставим предмет
                pcall(function()
@@ -1117,10 +1186,11 @@ BaseTab:CreateButton({
                end)
                
                loadedCount = loadedCount + 1
+               task.wait(ServerBuildDelay / 2)
             end
          end
          
-         hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+         -- Возвращаем игрока в центр по завершении
          hrp.CFrame = originalRootCFrame
          Rayfield:Notify({Title = "Build Complete!", Content = "Placed " .. loadedCount .. "/" .. #baseData .. " items. Everyone can see it!", Duration = 5})
       end)
